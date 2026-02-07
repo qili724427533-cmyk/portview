@@ -706,6 +706,51 @@ async fn kill_process(pid: u32) -> Result<(), String> {
     }
 }
 
+// 打开文件所在目录
+#[tauri::command]
+async fn open_folder(path: String) -> Result<(), String> {
+    use std::path::Path;
+    use std::process::Command;
+
+    // 确保我们获取的是文件所在的目录，而不是文件本身
+    let path_obj = Path::new(&path);
+    let dir = if path_obj.is_file() {
+        // 如果是文件路径，获取其父目录
+        path_obj.parent().unwrap_or(Path::new(&path))
+    } else {
+        // 如果已经是目录路径，直接使用
+        path_obj
+    };
+
+    let dir_str = dir.to_string_lossy().to_string();
+
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("explorer")
+            .arg(&dir_str)
+            .spawn()
+            .map_err(|e| format!("Failed to open explorer: {}", e))?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg(&dir_str)
+            .spawn()
+            .map_err(|e| format!("Failed to open finder: {}", e))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        Command::new("xdg-open")
+            .arg(&dir_str)
+            .spawn()
+            .map_err(|e| format!("Failed to open file manager: {}", e))?;
+    }
+
+    Ok(())
+}
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -716,7 +761,7 @@ fn greet(name: &str) -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, get_connections, get_process_details, kill_process])
+        .invoke_handler(tauri::generate_handler![greet, get_connections, get_process_details, kill_process, open_folder])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

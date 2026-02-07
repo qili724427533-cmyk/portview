@@ -70,7 +70,8 @@
     "memoryUsage": "内存使用",
     "cpuUsage": "CPU使用率",
     "parentPid": "父进程PID",
-    "startTime": "启动时间"
+    "startTime": "启动时间",
+    "openFolder": "打开所在文件夹"
   },
   "alerts": {
     "processKilled": "成功杀死进程: {name} (PID: {pid})",

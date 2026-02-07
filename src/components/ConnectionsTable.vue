@@ -162,8 +162,8 @@
             <td class="process-name-cell">
               <div class="process-with-icon">
                 <img
-                  v-if="conn.icon && !isKernelProcess(conn.process_name)"
-                  :src="'data:image/png;base64,' + conn.icon"
+                  v-if="!isKernelProcess(conn.process_name)"
+                  :src="conn.icon ? 'data:image/png;base64,' + conn.icon : '/src/assets/exe.svg'"
                   :alt="conn.process_name || 'Process Icon'"
                   class="process-icon"
                 />

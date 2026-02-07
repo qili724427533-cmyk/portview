@@ -70,7 +70,8 @@
     "memoryUsage": "Memory Usage",
     "cpuUsage": "CPU Usage",
     "parentPid": "Parent PID",
-    "startTime": "Start Time"
+    "startTime": "Start Time",
+    "openFolder": "Open Containing Folder"
   },
   "alerts": {
     "processKilled": "Successfully killed process: {name} (PID: {pid})",

@@ -65,6 +65,11 @@ const clickedConnection = ref<TcpConnection | null>(null);
 const showProcessDetails = ref(false);
 const processDetails = ref<ProcessDetails | null>(null);
 
+// 通知提示相关状态
+const showNotificationBox = ref(false);
+const notificationMessage = ref('');
+const notificationType = ref<'success' | 'error' | 'info'>('info'); // 'success', 'error', or 'info'
+
 // 排序相关状态
 const sortColumn = ref<
   | "process_name"
@@ -279,6 +284,7 @@ async function loadProcessDetails(pid: number) {
 // 显示进程详情弹窗
 async function showProcessDetailsDialog(conn: TcpConnection) {
   if (conn.pid) {
+    selectedConnection.value = conn; // 保存选中的连接以获取图标信息
     await loadProcessDetails(conn.pid);
     showProcessDetails.value = true;
   }
@@ -291,15 +297,19 @@ async function killProcess(conn: TcpConnection) {
       await invoke("kill_process", { pid: conn.pid });
       // 成功杀死进程后，重新加载连接列表
       await loadConnections();
-      alert(
+      showNotification(
         t("alerts.processKilled", {
           name: conn.process_name || "Unknown",
           pid: conn.pid,
         }),
+        'success'
       );
     } catch (error) {
       console.error(t("alerts.processKillFailed", { error }), error);
-      alert(t("alerts.processKillFailed", { error }));
+      showNotification(
+        t("alerts.processKillFailed", { error }),
+        'error'
+      );
     }
   }
 }
@@ -552,6 +562,18 @@ function toggleTheme() {
   }
 }
 
+// 显示通知
+function showNotification(message: string, type: 'success' | 'error' | 'info' = 'info') {
+  notificationMessage.value = message;
+  notificationType.value = type;
+  showNotificationBox.value = true;
+
+  // 3秒后自动隐藏通知
+  setTimeout(() => {
+    showNotificationBox.value = false;
+  }, 3000);
+}
+
 // 检查系统主题偏好
 function checkSystemThemePreference() {
   const savedTheme = localStorage.getItem("theme");
@@ -633,8 +655,26 @@ function checkSystemThemePreference() {
     <ProcessDetailsModal
       :showProcessDetails="showProcessDetails"
       :processDetails="processDetails"
+      :processIcon="selectedConnection?.icon"
       @update:showProcessDetails="showProcessDetails = $event"
     />
+    
+    <!-- 通知提示框 -->
+    <div 
+      v-if="showNotificationBox" 
+      class="notification-box"
+      :class="[notificationType, isDarkMode ? 'dark' : '']"
+    >
+      <div class="notification-content">
+        <span class="notification-message">{{ notificationMessage }}</span>
+        <button 
+          class="notification-close-btn" 
+          @click="showNotificationBox = false"
+        >
+          ×
+        </button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -811,5 +851,102 @@ button {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #a0aec0; /* 悬停时的颜色 */
+}
+
+/* 通知提示框样式 */
+.notification-box {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 10000;
+  min-width: 300px;
+  max-width: 500px;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  animation: slideInRight 0.3s ease-out;
+}
+
+.notification-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-radius: 8px;
+}
+
+.notification-message {
+  flex: 1;
+  margin-right: 10px;
+  word-break: break-word;
+}
+
+.notification-close-btn {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: inherit;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.notification-close-btn:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+/* 成功通知样式 */
+.notification-box.success .notification-content {
+  background-color: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+/* 错误通知样式 */
+.notification-box.error .notification-content {
+  background-color: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+/* 信息通知样式 */
+.notification-box.info .notification-content {
+  background-color: #d1ecf1;
+  color: #0c5460;
+  border: 1px solid #bee5eb;
+}
+
+/* 暗色主题下的通知样式 */
+.notification-box.dark.success .notification-content {
+  background-color: #1d3c25;
+  color: #8bd49b;
+  border: 1px solid #2d5c45;
+}
+
+.notification-box.dark.error .notification-content {
+  background-color: #572e37;
+  color: #e6a7b3;
+  border: 1px solid #7a404d;
+}
+
+.notification-box.dark.info .notification-content {
+  background-color: #2a4d5c;
+  color: #8dd1e1;
+  border: 1px solid #3a6a7d;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 </style>

@@ -6,7 +6,14 @@
   >
     <div class="modal-content" @click.stop>
       <div class="modal-header">
-        <h3>{{ t("modal.processDetails") }}</h3>
+        <div class="header-with-icon">
+          <img
+            :src="processIcon ? 'data:image/png;base64,' + processIcon : '/src/assets/exe.svg'"
+            :alt="processDetails?.name || 'Process Icon'"
+            class="process-icon-large"
+          />
+          <h3>{{ t("modal.processDetails") }}</h3>
+        </div>
         <button class="close-button" @click="emit('update:showProcessDetails', false)">
           ×
         </button>
@@ -26,7 +33,17 @@
         </p>
         <p>
           <strong>{{ t("modal.executablePath") }}:</strong>
-          <span>{{ processDetails.executable_path }}</span>
+          <span class="path-container">
+            <span>{{ processDetails.executable_path }}</span>
+            <button 
+              v-if="props.processDetails && props.processDetails.executable_path && props.processDetails.executable_path !== ''"
+              class="open-folder-btn" 
+              @click="openContainingFolder"
+              :title="t('modal.openFolder')"
+            >
+              📁
+            </button>
+          </span>
         </p>
         <p>
           <strong>{{ t("modal.memoryUsage") }}:</strong>
@@ -51,6 +68,7 @@
 
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
+import { invoke } from "@tauri-apps/api/core";
 
 // 定义进程详情类型
 export interface ProcessDetails {
@@ -68,6 +86,7 @@ export interface ProcessDetails {
 interface Props {
   showProcessDetails: boolean;
   processDetails: ProcessDetails | null;
+  processIcon: string | null; // Base64 encoded icon data
 }
 
 const props = defineProps<Props>();
@@ -81,6 +100,17 @@ const emit = defineEmits<Emits>();
 
 // 使用国际化
 const { t } = useI18n();
+
+// 打开文件所在目录
+const openContainingFolder = async () => {
+  if (props.processDetails && props.processDetails.executable_path) {
+    try {
+      await invoke('open_folder', { path: props.processDetails.executable_path });
+    } catch (error) {
+      console.error('Failed to open folder:', error);
+    }
+  }
+};
 
 
 // 格式化内存使用量显示
@@ -159,6 +189,19 @@ const formatDate = (timestamp: number | null): string => {
   border-bottom: 1px solid #e5e7eb;
 }
 
+.header-with-icon {
+  display: flex;
+  align-items: center;
+  gap: 10px; /* 图标与文字之间的间距 */
+}
+
+.process-icon-large {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  flex-shrink: 0; /* 防止图标被压缩 */
+}
+
 .modal-header h3 {
   margin: 0;
   font-size: 16px;
@@ -214,6 +257,40 @@ const formatDate = (timestamp: number | null): string => {
   word-break: break-all; /* 允许在任意字符间换行 */
   overflow-wrap: break-word; /* 在长单词或URL地址内部进行换行 */
   white-space: pre-wrap; /* 保留空白符序列，但是正常换行 */
+}
+
+.path-container {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.open-folder-btn {
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 16px;
+  color: #3b82f6; /* 蓝色文字 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0; /* 防止按钮被压缩 */
+}
+
+.open-folder-btn:hover {
+  color: #2563eb; /* 更深的蓝色 */
+  background: #f3f4f6; /* 浅灰色背景 */
+}
+
+.dark .open-folder-btn {
+  color: #60a5fa; /* 暗色主题下的蓝色 */
+}
+
+.dark .open-folder-btn:hover {
+  color: #3b82f6; /* 暗色主题下的更深蓝色 */
+  background: #374151; /* 暗色主题下的灰色背景 */
 }
 
 /* 暗色主题下的弹窗样式 */

@@ -28,6 +28,12 @@ tcpview/
 │   ├── i18n.ts            # Internationalization setup
 │   ├── assets/            # Static assets
 │   ├── locales/           # Language files for i18n
+│   ├── components/        # Vue components
+│   │   ├── ConnectionsTable.vue
+│   │   ├── ContextMenu.vue
+│   │   ├── MenuBar.vue
+│   │   ├── ProcessDetailsModal.vue
+│   │   └── StatusBar.vue
 │   └── vite-env.d.ts      # Vite environment type definitions
 ├── src-tauri/             # Rust backend source
 │   ├── src/

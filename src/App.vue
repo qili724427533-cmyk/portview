@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { useI18n } from "vue-i18n";
 
 // 定义连接数据类型
 interface TcpConnection {
@@ -31,6 +32,9 @@ interface ProcessDetails {
   start_time: number;
 }
 
+// 初始化国际化
+const { t, locale } = useI18n();
+
 const connections = ref<TcpConnection[]>([]);
 const isLoading = ref(false);
 const refreshInterval = ref<number | null>(null);
@@ -38,6 +42,7 @@ const refreshInterval = ref<number | null>(null);
 const autoRefreshInterval = ref<number | null>(null);
 const isAutoRefreshEnabled = ref(false);
 const refreshIntervals = [1, 2, 3, 5, 10]; // 可选的刷新间隔（秒）
+
 const selectedRefreshInterval = ref(1); // 默认选择1秒
 
 // 右键菜单相关状态
@@ -52,21 +57,29 @@ const clickedConnection = ref<TcpConnection | null>(null);
 const showProcessDetails = ref(false);
 const processDetails = ref<ProcessDetails | null>(null);
 
-
 // 排序相关状态
-const sortColumn = ref<'process_name' | 'pid' | 'protocol' | 'local_addr' | 'local_port' | 'remote_addr' | 'remote_port' | 'state' | 'start_time' | null>(null);
-const sortDirection = ref<'asc' | 'desc'>('asc'); // 'asc' 升序, 'desc' 降序
-
+const sortColumn = ref<
+  | "process_name"
+  | "pid"
+  | "protocol"
+  | "local_addr"
+  | "local_port"
+  | "remote_addr"
+  | "remote_port"
+  | "state"
+  | "start_time"
+  | null
+>(null);
+const sortDirection = ref<"asc" | "desc">("asc"); // 'asc' 升序, 'desc' 降序
 
 // 存储用户自定义的列宽
 const customColumnWidths = ref<Record<string, number>>({});
 
-
 // 菜单栏筛选条件
-const filterProtocol = ref<'all' | 'TCP' | 'UDP'>('all');
-const filterState = ref('all');
-const searchProcessName = ref('');
-const searchLocalAddr = ref('');
+const filterProtocol = ref<"all" | "TCP" | "UDP">("all");
+const filterState = ref("all");
+const searchProcessName = ref("");
+const searchLocalAddr = ref("");
 
 // 状态栏信息
 const statusBarInfo = ref({
@@ -80,7 +93,7 @@ const statusBarInfo = ref({
   closeWaitConnections: 0,
   otherConnections: 0,
   lastUpdate: new Date().toLocaleTimeString(),
-  refreshInterval: null as number | null
+  refreshInterval: null as number | null,
 });
 
 // 获取网络连接列表
@@ -91,47 +104,53 @@ async function loadConnections() {
 
     // 保存当前连接列表的副本用于比较
     const previousConnections = [...connections.value];
-    
+
     // 应用筛选条件
     let filteredResult = result;
 
     // 协议筛选
-    if (filterProtocol.value !== 'all') {
-      filteredResult = filteredResult.filter(conn => conn.protocol === filterProtocol.value);
+    if (filterProtocol.value !== "all") {
+      filteredResult = filteredResult.filter(
+        (conn) => conn.protocol === filterProtocol.value,
+      );
     }
 
     // 状态筛选
-    if (filterState.value !== 'all') {
-      filteredResult = filteredResult.filter(conn => conn.state === filterState.value);
+    if (filterState.value !== "all") {
+      filteredResult = filteredResult.filter(
+        (conn) => conn.state === filterState.value,
+      );
     }
 
     // 进程名搜索
-    if (searchProcessName.value.trim() !== '') {
+    if (searchProcessName.value.trim() !== "") {
       const searchTerm = searchProcessName.value.toLowerCase().trim();
-      filteredResult = filteredResult.filter(conn =>
-        conn.process_name && conn.process_name.toLowerCase().includes(searchTerm)
+      filteredResult = filteredResult.filter(
+        (conn) =>
+          conn.process_name &&
+          conn.process_name.toLowerCase().includes(searchTerm),
       );
     }
 
     // 本地地址搜索
-    if (searchLocalAddr.value.trim() !== '') {
+    if (searchLocalAddr.value.trim() !== "") {
       const searchTerm = searchLocalAddr.value.toLowerCase().trim();
-      filteredResult = filteredResult.filter(conn =>
-        conn.local_addr.toLowerCase().includes(searchTerm)
+      filteredResult = filteredResult.filter((conn) =>
+        conn.local_addr.toLowerCase().includes(searchTerm),
       );
     }
 
     // 标记状态变化的连接
-    filteredResult.forEach(conn => {
+    filteredResult.forEach((conn) => {
       // 生成唯一标识符用于比较
-      const connId = `${conn.protocol}-${conn.local_addr}-${conn.local_port}-${conn.remote_addr}-${conn.remote_port}-${conn.pid || 'null'}`;
-      
+      const connId = `${conn.protocol}-${conn.local_addr}-${conn.local_port}-${conn.remote_addr}-${conn.remote_port}-${conn.pid || "null"}`;
+
       // 查找匹配的旧连接
-      const matchingPrevConn = previousConnections.find(prevConn => {
-        const prevConnId = `${prevConn.protocol}-${prevConn.local_addr}-${prevConn.local_port}-${prevConn.remote_addr}-${prevConn.remote_port}-${prevConn.pid || 'null'}`;
+      const matchingPrevConn = previousConnections.find((prevConn) => {
+        const prevConnId = `${prevConn.protocol}-${prevConn.local_addr}-${prevConn.local_port}-${prevConn.remote_addr}-${prevConn.remote_port}-${prevConn.pid || "null"}`;
         return prevConnId === connId;
       });
-      
+
       // 如果找到了匹配的连接，检查状态是否发生了变化
       if (matchingPrevConn) {
         conn.hasChanged = matchingPrevConn.state !== conn.state;
@@ -140,22 +159,26 @@ async function loadConnections() {
         conn.hasChanged = false;
       }
     });
-    
+
     // 检查是否有连接状态发生了变化
-    const changedConnections = filteredResult.filter(conn => conn.hasChanged);
+    const changedConnections = filteredResult.filter((conn) => conn.hasChanged);
     if (changedConnections.length > 0) {
-      console.log(`检测到 ${changedConnections.length} 个连接状态发生变化:`, changedConnections.map(c => ({
-        protocol: c.protocol,
-        local_addr: c.local_addr,
-        local_port: c.local_port,
-        remote_addr: c.remote_addr,
-        remote_port: c.remote_port,
-        old_state: previousConnections.find(pc => 
-          `${pc.protocol}-${pc.local_addr}-${pc.local_port}-${pc.remote_addr}-${pc.remote_port}-${pc.pid || 'null'}` ===
-          `${c.protocol}-${c.local_addr}-${c.local_port}-${c.remote_addr}-${c.remote_port}-${c.pid || 'null'}`
-        )?.state,
-        new_state: c.state
-      })));
+      console.log(
+        `${t("alerts.connectionStateChanged", { count: changedConnections.length })}:`,
+        changedConnections.map((c) => ({
+          protocol: c.protocol,
+          local_addr: c.local_addr,
+          local_port: c.local_port,
+          remote_addr: c.remote_addr,
+          remote_port: c.remote_port,
+          old_state: previousConnections.find(
+            (pc) =>
+              `${pc.protocol}-${pc.local_addr}-${pc.local_port}-${pc.remote_addr}-${pc.remote_port}-${pc.pid || "null"}` ===
+              `${c.protocol}-${c.local_addr}-${c.local_port}-${c.remote_addr}-${c.remote_port}-${c.pid || "null"}`,
+          )?.state,
+          new_state: c.state,
+        })),
+      );
     }
 
     connections.value = filteredResult;
@@ -168,24 +191,24 @@ async function loadConnections() {
 
     // 3秒后移除变化标记
     setTimeout(() => {
-      connections.value = connections.value.map(conn => ({
+      connections.value = connections.value.map((conn) => ({
         ...conn,
-        hasChanged: false
+        hasChanged: false,
       }));
     }, 3000);
-    
+
     // 应用自定义列宽（在排序和标记处理之后）
     applyCustomColumnWidths();
   } catch (error) {
-    console.error("获取连接列表失败:", error);
-    alert(`获取连接列表失败: ${error}`);
+    console.error(t("alerts.getConnectionsFailed", { error }), error);
+    alert(t("alerts.getConnectionsFailed", { error }));
   } finally {
     isLoading.value = false;
   }
 }
 
 // 设置协议筛选
-function setProtocolFilter(protocol: 'all' | 'TCP' | 'UDP') {
+function setProtocolFilter(protocol: "all" | "TCP" | "UDP") {
   filterProtocol.value = protocol;
   applyFiltersAndSearch();
 }
@@ -199,35 +222,52 @@ function applyFiltersAndSearch() {
 // 更新状态栏信息
 function updateStatusBarInfo(connections: TcpConnection[]) {
   statusBarInfo.value.totalConnections = connections.length;
-  statusBarInfo.value.tcpConnections = connections.filter(conn => conn.protocol === 'TCP').length;
-  statusBarInfo.value.udpConnections = connections.filter(conn => conn.protocol === 'UDP').length;
-  statusBarInfo.value.kernelConnections = connections.filter(conn =>
-    conn.process_name === '[KERNEL]' || (conn.process_name && conn.process_name.includes('[KERNEL]'))
+  statusBarInfo.value.tcpConnections = connections.filter(
+    (conn) => conn.protocol === "TCP",
   ).length;
-  
+  statusBarInfo.value.udpConnections = connections.filter(
+    (conn) => conn.protocol === "UDP",
+  ).length;
+  statusBarInfo.value.kernelConnections = connections.filter(
+    (conn) =>
+      conn.process_name === "[KERNEL]" ||
+      (conn.process_name && conn.process_name.includes("[KERNEL]")),
+  ).length;
+
   // 统计各种连接状态的数量
-  statusBarInfo.value.establishedConnections = connections.filter(conn => conn.state === 'ESTABLISHED').length;
-  statusBarInfo.value.listenConnections = connections.filter(conn => conn.state === 'LISTEN').length;
-  statusBarInfo.value.timeWaitConnections = connections.filter(conn => conn.state === 'TIME_WAIT').length;
-  statusBarInfo.value.closeWaitConnections = connections.filter(conn => conn.state === 'CLOSE_WAIT').length;
-  statusBarInfo.value.otherConnections = connections.filter(conn => 
-    conn.state !== 'ESTABLISHED' && 
-    conn.state !== 'LISTEN' && 
-    conn.state !== 'TIME_WAIT' && 
-    conn.state !== 'CLOSE_WAIT'
+  statusBarInfo.value.establishedConnections = connections.filter(
+    (conn) => conn.state === "ESTABLISHED",
   ).length;
-  
+  statusBarInfo.value.listenConnections = connections.filter(
+    (conn) => conn.state === "LISTEN",
+  ).length;
+  statusBarInfo.value.timeWaitConnections = connections.filter(
+    (conn) => conn.state === "TIME_WAIT",
+  ).length;
+  statusBarInfo.value.closeWaitConnections = connections.filter(
+    (conn) => conn.state === "CLOSE_WAIT",
+  ).length;
+  statusBarInfo.value.otherConnections = connections.filter(
+    (conn) =>
+      conn.state !== "ESTABLISHED" &&
+      conn.state !== "LISTEN" &&
+      conn.state !== "TIME_WAIT" &&
+      conn.state !== "CLOSE_WAIT",
+  ).length;
+
   statusBarInfo.value.lastUpdate = new Date().toLocaleTimeString();
 }
 
 // 获取进程详情
 async function loadProcessDetails(pid: number) {
   try {
-    const details: ProcessDetails = await invoke("get_process_details", { pid });
+    const details: ProcessDetails = await invoke("get_process_details", {
+      pid,
+    });
     processDetails.value = details;
   } catch (error) {
-    console.error("获取进程详情失败:", error);
-    alert(`获取进程详情失败: ${error}`);
+    console.error(t("alerts.getProcessDetailsFailed", { error }), error);
+    alert(t("alerts.getProcessDetailsFailed", { error }));
   }
 }
 
@@ -246,10 +286,15 @@ async function killProcess(conn: TcpConnection) {
       await invoke("kill_process", { pid: conn.pid });
       // 成功杀死进程后，重新加载连接列表
       await loadConnections();
-      alert(`成功杀死进程: ${conn.process_name || 'Unknown'} (PID: ${conn.pid})`);
+      alert(
+        t("alerts.processKilled", {
+          name: conn.process_name || "Unknown",
+          pid: conn.pid,
+        }),
+      );
     } catch (error) {
-      console.error("杀死进程失败:", error);
-      alert(`杀死进程失败: ${error}`);
+      console.error(t("alerts.processKillFailed", { error }), error);
+      alert(t("alerts.processKillFailed", { error }));
     }
   }
 }
@@ -280,7 +325,7 @@ function showContextMenuHandler(conn: TcpConnection, event: MouseEvent) {
 
   contextMenuPosition.value = {
     x: posX,
-    y: posY
+    y: posY,
   };
 }
 
@@ -289,8 +334,8 @@ const contextMenuStyle = computed(() => {
   return {
     top: `${contextMenuPosition.value.y}px`,
     left: `${contextMenuPosition.value.x}px`,
-    position: 'fixed' as const,
-    zIndex: 1000
+    position: "fixed" as const,
+    zIndex: 1000,
   };
 });
 
@@ -307,58 +352,58 @@ function applySorting() {
     let valueA: any, valueB: any;
 
     switch (sortColumn.value) {
-      case 'process_name':
-        valueA = a.process_name || '';
-        valueB = b.process_name || '';
-        return sortDirection.value === 'asc'
+      case "process_name":
+        valueA = a.process_name || "";
+        valueB = b.process_name || "";
+        return sortDirection.value === "asc"
           ? valueA.localeCompare(valueB)
           : valueB.localeCompare(valueA);
-      case 'pid':
+      case "pid":
         valueA = a.pid || 0;
         valueB = b.pid || 0;
-        return sortDirection.value === 'asc'
+        return sortDirection.value === "asc"
           ? valueA - valueB
           : valueB - valueA;
-      case 'protocol':
-        valueA = a.protocol || '';
-        valueB = b.protocol || '';
-        return sortDirection.value === 'asc'
+      case "protocol":
+        valueA = a.protocol || "";
+        valueB = b.protocol || "";
+        return sortDirection.value === "asc"
           ? valueA.localeCompare(valueB)
           : valueB.localeCompare(valueA);
-      case 'local_addr':
-        valueA = a.local_addr || '';
-        valueB = b.local_addr || '';
-        return sortDirection.value === 'asc'
+      case "local_addr":
+        valueA = a.local_addr || "";
+        valueB = b.local_addr || "";
+        return sortDirection.value === "asc"
           ? valueA.localeCompare(valueB)
           : valueB.localeCompare(valueA);
-      case 'local_port':
+      case "local_port":
         valueA = a.local_port || 0;
         valueB = b.local_port || 0;
-        return sortDirection.value === 'asc'
+        return sortDirection.value === "asc"
           ? valueA - valueB
           : valueB - valueA;
-      case 'remote_addr':
-        valueA = a.remote_addr || '';
-        valueB = b.remote_addr || '';
-        return sortDirection.value === 'asc'
+      case "remote_addr":
+        valueA = a.remote_addr || "";
+        valueB = b.remote_addr || "";
+        return sortDirection.value === "asc"
           ? valueA.localeCompare(valueB)
           : valueB.localeCompare(valueA);
-      case 'remote_port':
+      case "remote_port":
         valueA = a.remote_port || 0;
         valueB = b.remote_port || 0;
-        return sortDirection.value === 'asc'
+        return sortDirection.value === "asc"
           ? valueA - valueB
           : valueB - valueA;
-      case 'state':
-        valueA = a.state || '';
-        valueB = b.state || '';
-        return sortDirection.value === 'asc'
+      case "state":
+        valueA = a.state || "";
+        valueB = b.state || "";
+        return sortDirection.value === "asc"
           ? valueA.localeCompare(valueB)
           : valueB.localeCompare(valueA);
-      case 'start_time':
+      case "start_time":
         valueA = a.start_time || 0;
         valueB = b.start_time || 0;
-        return sortDirection.value === 'asc'
+        return sortDirection.value === "asc"
           ? valueA - valueB
           : valueB - valueA;
       default:
@@ -368,23 +413,33 @@ function applySorting() {
 }
 
 // 切换列排序
-async function toggleSort(column: 'process_name' | 'pid' | 'protocol' | 'local_addr' | 'local_port' | 'remote_addr' | 'remote_port' | 'state' | 'start_time') {
+async function toggleSort(
+  column:
+    | "process_name"
+    | "pid"
+    | "protocol"
+    | "local_addr"
+    | "local_port"
+    | "remote_addr"
+    | "remote_port"
+    | "state"
+    | "start_time",
+) {
   // 在排序前重新获取最新连接数据
   await loadConnections();
 
   if (sortColumn.value === column) {
     // 如果当前列已经是排序列，则切换排序方向
-    sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc';
+    sortDirection.value = sortDirection.value === "asc" ? "desc" : "asc";
   } else {
     // 如果切换到新列，则默认升序
     sortColumn.value = column;
-    sortDirection.value = 'asc';
+    sortDirection.value = "asc";
   }
 
   // 重新应用排序
   applySorting();
 }
-
 
 // 列宽拖拽相关变量
 let isDragging = false;
@@ -392,7 +447,6 @@ let dragStartX = 0;
 let dragStartWidth = 0;
 let currentColumnIndex = -1;
 let initialColumnWidths: number[] = [];
-let initialTableWidth = 0;
 
 // 开始拖拽列宽
 function startColumnResize(event: MouseEvent, columnIndex: number) {
@@ -400,10 +454,10 @@ function startColumnResize(event: MouseEvent, columnIndex: number) {
   const thElement = event.target as HTMLElement;
   const rect = thElement.getBoundingClientRect();
   const rightEdgeThreshold = 10; // 10像素的边框区域（包括margin）
-  
+
   // 计算鼠标相对于元素右边的距离
   const distanceFromRight = rect.right - event.clientX;
-  
+
   // 只有当鼠标在右边框区域内才允许拖拽
   if (distanceFromRight > rightEdgeThreshold) {
     return; // 不在边框区域，不执行拖拽
@@ -417,29 +471,29 @@ function startColumnResize(event: MouseEvent, columnIndex: number) {
   dragStartWidth = thElement.offsetWidth;
 
   // 获取所有列的初始宽度
-  const thElements = document.querySelectorAll('.connections-table th');
+  const thElements = document.querySelectorAll(".connections-table th");
   initialColumnWidths = [];
-  thElements.forEach(th => {
+  thElements.forEach((th) => {
     initialColumnWidths.push((th as HTMLElement).offsetWidth);
   });
 
   // 获取表格的初始宽度
-  const table = document.querySelector('.connections-table') as HTMLElement;
+  const table = document.querySelector(".connections-table") as HTMLElement;
   if (table) {
-    initialTableWidth = table.offsetWidth;
+    // initialTableWidth = table.offsetWidth; // 暂时未使用
   }
 
   // 添加resizing类到表格
   if (table) {
-    table.classList.add('resizing');
+    table.classList.add("resizing");
   }
 
   // 添加current-resizing类到当前列
-  thElement.classList.add('current-resizing');
+  thElement.classList.add("current-resizing");
 
   // 添加鼠标移动和释放事件监听器
-  document.addEventListener('mousemove', handleColumnResize);
-  document.addEventListener('mouseup', stopColumnResize);
+  document.addEventListener("mousemove", handleColumnResize);
+  document.addEventListener("mouseup", stopColumnResize);
 
   // 阻止默认行为，防止选中文本
   event.preventDefault();
@@ -453,7 +507,7 @@ function handleColumnResize(event: MouseEvent) {
   const newWidth = Math.max(dragStartWidth + deltaX, 50); // 最小宽度50px
 
   // 获取所有表头元素
-  const thElements = document.querySelectorAll('.connections-table th');
+  const thElements = document.querySelectorAll(".connections-table th");
   if (thElements[currentColumnIndex]) {
     const th = thElements[currentColumnIndex] as HTMLElement;
 
@@ -462,27 +516,36 @@ function handleColumnResize(event: MouseEvent) {
     th.style.maxWidth = `${newWidth}px`;
     th.style.minWidth = `${newWidth}px`;
 
-    th.style.setProperty('width', `${newWidth}px`, 'important');
-    th.style.setProperty('max-width', `${newWidth}px`, 'important');
-    th.style.setProperty('min-width', `${newWidth}px`, 'important');
+    th.style.setProperty("width", `${newWidth}px`, "important");
+    th.style.setProperty("max-width", `${newWidth}px`, "important");
+    th.style.setProperty("min-width", `${newWidth}px`, "important");
 
     // 同时设置对应列的td元素以确保列宽一致
-    const tdElements = document.querySelectorAll(`.connections-table td:nth-child(${currentColumnIndex + 1})`);
-    tdElements.forEach(td => {
+    const tdElements = document.querySelectorAll(
+      `.connections-table td:nth-child(${currentColumnIndex + 1})`,
+    );
+    tdElements.forEach((td) => {
       const tdElement = td as HTMLElement;
       tdElement.style.width = `${newWidth}px`;
       tdElement.style.maxWidth = `${newWidth}px`;
       tdElement.style.minWidth = `${newWidth}px`;
 
-      tdElement.style.setProperty('width', `${newWidth}px`, 'important');
-      tdElement.style.setProperty('max-width', `${newWidth}px`, 'important');
-      tdElement.style.setProperty('min-width', `${newWidth}px`, 'important');
+      tdElement.style.setProperty("width", `${newWidth}px`, "important");
+      tdElement.style.setProperty("max-width", `${newWidth}px`, "important");
+      tdElement.style.setProperty("min-width", `${newWidth}px`, "important");
     });
 
     // 更新自定义列宽存储
     const columnOrder: (keyof TcpConnection)[] = [
-      'process_name', 'pid', 'protocol', 'local_addr', 'local_port',
-      'remote_addr', 'remote_port', 'state', 'start_time'
+      "process_name",
+      "pid",
+      "protocol",
+      "local_addr",
+      "local_port",
+      "remote_addr",
+      "remote_port",
+      "state",
+      "start_time",
     ];
     if (columnOrder[currentColumnIndex]) {
       customColumnWidths.value[columnOrder[currentColumnIndex]] = newWidth;
@@ -495,55 +558,42 @@ function stopColumnResize() {
   isDragging = false;
 
   // 移除resizing类
-  const table = document.querySelector('.connections-table') as HTMLElement;
+  const table = document.querySelector(".connections-table") as HTMLElement;
   if (table) {
-    table.classList.remove('resizing');
+    table.classList.remove("resizing");
   }
 
   // 移除current-resizing类
-  const thElements = document.querySelectorAll('.connections-table th');
-  thElements.forEach(th => {
-    th.classList.remove('current-resizing');
+  const thElements = document.querySelectorAll(".connections-table th");
+  thElements.forEach((th) => {
+    th.classList.remove("current-resizing");
   });
 
   // 恢复鼠标指针样式
-  thElements.forEach(th => {
-    (th as HTMLElement).style.cursor = '';
+  thElements.forEach((th) => {
+    (th as HTMLElement).style.cursor = "";
   });
 
   // 移除事件监听器
-  document.removeEventListener('mousemove', handleColumnResize);
-  document.removeEventListener('mouseup', stopColumnResize);
+  document.removeEventListener("mousemove", handleColumnResize);
+  document.removeEventListener("mouseup", stopColumnResize);
 }
-
-
-
-// 获取表头文本
-function getHeaderText(column: keyof TcpConnection): string {
-  const headers: Record<string, string> = {
-    'process_name': '进程名称',
-    'pid': 'PID',
-    'protocol': '协议',
-    'local_addr': '本地地址',
-    'local_port': '本地端口',
-    'remote_addr': '远程地址',
-    'remote_port': '远程端口',
-    'state': '状态',
-    'start_time': '启动时间'
-  };
-  return headers[column] || column;
-}
-
-
 
 // 应用自定义列宽到DOM
 function applyCustomColumnWidths() {
   // 使用 setTimeout 确保在 DOM 更新后执行
   setTimeout(() => {
-    const thElements = document.querySelectorAll('.connections-table th');
+    const thElements = document.querySelectorAll(".connections-table th");
     const columnOrder: (keyof TcpConnection)[] = [
-      'process_name', 'pid', 'protocol', 'local_addr', 'local_port',
-      'remote_addr', 'remote_port', 'state', 'start_time'
+      "process_name",
+      "pid",
+      "protocol",
+      "local_addr",
+      "local_port",
+      "remote_addr",
+      "remote_port",
+      "state",
+      "start_time",
     ];
 
     columnOrder.forEach((col, index) => {
@@ -556,32 +606,32 @@ function applyCustomColumnWidths() {
           colWidth = customColumnWidths.value[col];
         } else {
           // 使用默认宽度
-          switch(col) {
-            case 'process_name':
+          switch (col) {
+            case "process_name":
               colWidth = 150; // 进程名称列较宽
               break;
-            case 'pid':
+            case "pid":
               colWidth = 80; // PID列较窄
               break;
-            case 'protocol':
+            case "protocol":
               colWidth = 60; // 协议列较窄
               break;
-            case 'local_addr':
+            case "local_addr":
               colWidth = 120; // 本地地址列中等
               break;
-            case 'local_port':
+            case "local_port":
               colWidth = 80; // 本地端口列较窄
               break;
-            case 'remote_addr':
+            case "remote_addr":
               colWidth = 120; // 远程地址列中等
               break;
-            case 'remote_port':
+            case "remote_port":
               colWidth = 80; // 远程端口列较窄
               break;
-            case 'state':
+            case "state":
               colWidth = 100; // 状态列中等
               break;
-            case 'start_time':
+            case "start_time":
               colWidth = 150; // 启动时间列较宽
               break;
             default:
@@ -594,56 +644,65 @@ function applyCustomColumnWidths() {
         th.style.maxWidth = `${colWidth}px`;
         th.style.minWidth = `${colWidth}px`;
 
-        th.style.setProperty('width', `${colWidth}px`, 'important');
-        th.style.setProperty('max-width', `${colWidth}px`, 'important');
-        th.style.setProperty('min-width', `${colWidth}px`, 'important');
+        th.style.setProperty("width", `${colWidth}px`, "important");
+        th.style.setProperty("max-width", `${colWidth}px`, "important");
+        th.style.setProperty("min-width", `${colWidth}px`, "important");
 
         // 同时设置td元素以确保列宽一致
-        const tdElements = document.querySelectorAll(`.connections-table td:nth-child(${index + 1})`);
-        tdElements.forEach(td => {
+        const tdElements = document.querySelectorAll(
+          `.connections-table td:nth-child(${index + 1})`,
+        );
+        tdElements.forEach((td) => {
           const tdElement = td as HTMLElement;
           tdElement.style.width = `${colWidth}px`;
           tdElement.style.maxWidth = `${colWidth}px`;
           tdElement.style.minWidth = `${colWidth}px`;
 
-          tdElement.style.setProperty('width', `${colWidth}px`, 'important');
-          tdElement.style.setProperty('max-width', `${colWidth}px`, 'important');
-          tdElement.style.setProperty('min-width', `${colWidth}px`, 'important');
+          tdElement.style.setProperty("width", `${colWidth}px`, "important");
+          tdElement.style.setProperty(
+            "max-width",
+            `${colWidth}px`,
+            "important",
+          );
+          tdElement.style.setProperty(
+            "min-width",
+            `${colWidth}px`,
+            "important",
+          );
         });
       }
     });
 
     // 确保表格使用固定布局
-    const table = document.querySelector('.connections-table') as HTMLElement;
+    const table = document.querySelector(".connections-table") as HTMLElement;
     if (table) {
-      table.style.tableLayout = 'fixed';
+      table.style.tableLayout = "fixed";
     }
-    
+
     // 设置冗余列填充剩余空间
-    const fillerColumns = document.querySelectorAll('.connections-table th.filler-column, .connections-table td.filler-cell');
-    fillerColumns.forEach(filler => {
+    const fillerColumns = document.querySelectorAll(
+      ".connections-table th.filler-column, .connections-table td.filler-cell",
+    );
+    fillerColumns.forEach((filler) => {
       const fillerElement = filler as HTMLElement;
-      fillerElement.style.width = '100%';
-      fillerElement.style.minWidth = '0';
-      fillerElement.style.maxWidth = 'none';
+      fillerElement.style.width = "100%";
+      fillerElement.style.minWidth = "0";
+      fillerElement.style.maxWidth = "none";
     });
   }, 0);
 }
-
-
-
 
 // 启用自动刷新
 function enableAutoRefresh() {
   if (autoRefreshInterval.value !== null) {
     clearInterval(autoRefreshInterval.value);
   }
-  
+
   isAutoRefreshEnabled.value = true;
   autoRefreshInterval.value = window.setInterval(() => {
     loadConnections();
   }, selectedRefreshInterval.value * 1000); // 转换为毫秒
-  
+
   // 更新状态栏信息
   statusBarInfo.value.refreshInterval = selectedRefreshInterval.value;
 }
@@ -654,7 +713,7 @@ function disableAutoRefresh() {
     clearInterval(autoRefreshInterval.value);
     autoRefreshInterval.value = null;
   }
-  
+
   isAutoRefreshEnabled.value = false;
   statusBarInfo.value.refreshInterval = null;
 }
@@ -671,12 +730,12 @@ function toggleAutoRefresh() {
 // 更改刷新间隔
 function changeRefreshInterval(interval: number) {
   selectedRefreshInterval.value = interval;
-  
+
   // 如果自动刷新已启用，重新设置间隔
   if (isAutoRefreshEnabled.value) {
     enableAutoRefresh();
   }
-  
+
   // 更新状态栏信息
   if (isAutoRefreshEnabled.value) {
     statusBarInfo.value.refreshInterval = selectedRefreshInterval.value;
@@ -685,13 +744,20 @@ function changeRefreshInterval(interval: number) {
 
 // 页面加载完成后自动获取连接列表
 onMounted(() => {
+  // 设置语言为本地存储的语言或浏览器语言
+  const savedLang = localStorage.getItem("locale");
+  if (savedLang && (savedLang === "zh" || savedLang === "en")) {
+    const { locale } = useI18n();
+    locale.value = savedLang as "zh" | "en";
+  }
+
   loadConnections();
 
   // 监听窗口大小变化事件
-  window.addEventListener('resize', handleWindowResize);
+  window.addEventListener("resize", handleWindowResize);
 
   // 监听文档上的点击事件，用于隐藏右键菜单
-  document.addEventListener('click', hideContextMenu);
+  document.addEventListener("click", hideContextMenu);
 });
 
 // 组件卸载时清理定时器和事件监听器
@@ -706,20 +772,23 @@ onUnmounted(() => {
   }
 
   // 移除窗口大小变化事件监听器
-  window.removeEventListener('resize', handleWindowResize);
+  window.removeEventListener("resize", handleWindowResize);
 
   // 移除文档点击事件监听器
-  document.removeEventListener('click', hideContextMenu);
-  
+  document.removeEventListener("click", hideContextMenu);
+
   // 确保移除可能存在的列宽调整事件监听器
-  document.removeEventListener('mousemove', handleColumnResize);
-  document.removeEventListener('mouseup', stopColumnResize);
+  document.removeEventListener("mousemove", handleColumnResize);
+  document.removeEventListener("mouseup", stopColumnResize);
 });
 
 // 处理窗口大小变化
 function handleWindowResize() {
-  // 在窗口大小变化时，仅做一些基本的布局更新
+  // 在窗口大小变化时，重新应用列宽
   setTimeout(() => {
+    // 重新应用自定义列宽
+    applyCustomColumnWidths();
+
     // 强制浏览器重新计算布局
     document.body.offsetHeight;
   }, 150); // 增加延时以确保窗口大小变化完全结束
@@ -745,7 +814,7 @@ function formatMemoryUsage(memoryInBytes: number): string {
 // 格式化日期时间显示
 function formatDate(timestamp: number | null): string {
   if (timestamp === null || timestamp === 0) {
-    return '-';
+    return "-";
   }
 
   // 将秒级时间戳转换为毫秒级时间戳
@@ -753,104 +822,118 @@ function formatDate(timestamp: number | null): string {
 
   // 获取年、月、日、小时、分钟和秒
   const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0'); // 月份从0开始，需要+1
-  const day = String(date.getDate()).padStart(2, '0');
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  const seconds = String(date.getSeconds()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, "0"); // 月份从0开始，需要+1
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
 
   // 返回格式化的日期时间字符串
   return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 }
 
-
 // 判断是否为内核进程
 function isKernelProcess(processName: string | null): boolean {
-  return processName === '[KERNEL]' || (processName !== null && processName.includes('[KERNEL]'));
+  return (
+    processName === "[KERNEL]" ||
+    (processName !== null && processName.includes("[KERNEL]"))
+  );
 }
 
+// 语言切换功能
+function changeLanguage(lang: "zh" | "en") {
+  locale.value = lang;
+  localStorage.setItem("locale", lang); // 保存用户选择的语言到localStorage
+}
 </script>
 
 <template>
   <div class="container">
     <!-- 菜单栏 -->
-    <div class="menu-bar">
-        <div class="menu-group">
-          <label class="menu-label">协议:</label>
-          <div class="protocol-buttons">
-            <button
-              :class="['protocol-btn', { active: filterProtocol === 'all' }]"
-              @click="setProtocolFilter('all')"
-            >
-              全部
-            </button>
-            <button
-              :class="['protocol-btn', { active: filterProtocol === 'TCP' }]"
-              @click="setProtocolFilter('TCP')"
-            >
-              TCP
-            </button>
-            <button
-              :class="['protocol-btn', { active: filterProtocol === 'UDP' }]"
-              @click="setProtocolFilter('UDP')"
-            >
-              UDP
-            </button>
-          </div>
+    <!-- 主菜单容器，分为左右两组，两端对齐 -->
+    <div class="main-menu-container">
+      <div class="menu-group">
+        <label class="menu-label">{{ t("menu.protocol") }}</label>
+        <div class="protocol-buttons">
+          <button
+            :class="['protocol-btn', { active: filterProtocol === 'all' }]"
+            @click="setProtocolFilter('all')"
+          >
+            {{ t("menu.protocolAll") }}
+          </button>
+          <button
+            :class="['protocol-btn', { active: filterProtocol === 'TCP' }]"
+            @click="setProtocolFilter('TCP')"
+          >
+            {{ t("menu.protocolTCP") }}
+          </button>
+          <button
+            :class="['protocol-btn', { active: filterProtocol === 'UDP' }]"
+            @click="setProtocolFilter('UDP')"
+          >
+            {{ t("menu.protocolUDP") }}
+          </button>
         </div>
+      </div>
 
       <div class="menu-group">
-        <label class="menu-label">状态:</label>
+        <label class="menu-label">{{ t("menu.state") }}</label>
         <select
           v-model="filterState"
           @change="applyFiltersAndSearch"
-          class="menu-select"
+          class="state-select"
         >
-          <option value="all">全部</option>
-          <option value="LISTEN">监听</option>
-          <option value="ESTABLISHED">已建立</option>
-          <option value="TIME_WAIT">等待</option>
-          <option value="CLOSE_WAIT">关闭等待</option>
-          <option value="SYN_SENT">同步发送</option>
-          <option value="SYN_RECV">同步接收</option>
-          <option value="FIN_WAIT1">结束等待1</option>
-          <option value="FIN_WAIT2">结束等待2</option>
-          <option value="LAST_ACK">最后确认</option>
-          <option value="CLOSING">关闭中</option>
-          <option value="UNCONN">未连接</option>
+          <option value="all">{{ t("menu.stateAll") }}</option>
+          <option value="LISTEN">{{ t("menu.stateListen") }}</option>
+          <option value="ESTABLISHED">
+            {{ t("menu.stateEstablished") }}
+          </option>
+          <option value="TIME_WAIT">{{ t("menu.stateTimeWait") }}</option>
+          <option value="CLOSE_WAIT">{{ t("menu.stateCloseWait") }}</option>
+          <option value="SYN_SENT">{{ t("menu.stateSynSent") }}</option>
+          <option value="SYN_RECV">{{ t("menu.stateSynRecv") }}</option>
+          <option value="FIN_WAIT1">{{ t("menu.stateFinWait1") }}</option>
+          <option value="FIN_WAIT2">{{ t("menu.stateFinWait2") }}</option>
+          <option value="LAST_ACK">{{ t("menu.stateLastAck") }}</option>
+          <option value="CLOSING">{{ t("menu.stateClosing") }}</option>
+          <option value="UNCONN">{{ t("menu.stateUnconn") }}</option>
         </select>
       </div>
 
       <div class="menu-group search-group">
-        <label class="menu-label">搜索进程:</label>
+        <label class="menu-label">{{ t("menu.searchProcess") }}</label>
         <input
           type="text"
           v-model="searchProcessName"
           @input="applyFiltersAndSearch"
-          placeholder="输入进程名称..."
+          :placeholder="t('menu.searchPlaceholder')"
           class="menu-search"
         />
       </div>
 
       <div class="menu-group search-group">
-        <label class="menu-label">本地地址:</label>
+        <label class="menu-label">{{ t("menu.searchLocalAddr") }}</label>
         <input
           type="text"
           v-model="searchLocalAddr"
           @input="applyFiltersAndSearch"
-          placeholder="输入本地地址..."
+          :placeholder="t('menu.localAddrPlaceholder')"
           class="menu-search"
         />
       </div>
-      
+
       <div class="menu-group">
-        <label class="menu-label">自动刷新:</label>
+        <label class="menu-label">{{ t("menu.autoRefresh") }}</label>
         <div class="refresh-controls">
           <button
             :class="['refresh-toggle-btn', { active: isAutoRefreshEnabled }]"
             @click="toggleAutoRefresh"
           >
-            {{ isAutoRefreshEnabled ? '停止' : '开始' }}
+            {{
+              isAutoRefreshEnabled
+                ? t("menu.refreshStop")
+                : t("menu.refreshStart")
+            }}
           </button>
           <select
             v-model="selectedRefreshInterval"
@@ -858,9 +941,31 @@ function isKernelProcess(processName: string | null): boolean {
             class="refresh-interval-select"
             :disabled="!isAutoRefreshEnabled"
           >
-            <option v-for="interval in refreshIntervals" :key="interval" :value="interval">
-              {{ interval }}秒
+            <option
+              v-for="interval in refreshIntervals"
+              :key="interval"
+              :value="interval"
+            >
+              {{ interval }}{{ t("menu.refreshInterval") }}
             </option>
+          </select>
+        </div>
+      </div>
+      <!-- 右侧菜单组 - 包含语言选择 -->
+      <div class="menu-group">
+        <div class="language-selector">
+          <label class="menu-label">{{ t("menu.language") }}</label>
+          <select
+            @change="
+              changeLanguage(
+                ($event.target as HTMLSelectElement).value as 'zh' | 'en',
+              )
+            "
+            :value="$i18n.locale"
+            class="lang-select"
+          >
+            <option value="zh">{{ t("zh") }}</option>
+            <option value="en">{{ t("en") }}</option>
           </select>
         </div>
       </div>
@@ -871,92 +976,140 @@ function isKernelProcess(processName: string | null): boolean {
         <table class="connections-table">
           <thead>
             <tr>
-              <th class="resizable-th" @mousedown="startColumnResize($event, 0)">
+              <th
+                class="resizable-th"
+                @mousedown="startColumnResize($event, 0)"
+              >
                 <div class="column-header" @click="toggleSort('process_name')">
                   <span class="sortable-header">
-                    进程名称
-                    <span v-if="sortColumn === 'process_name'" class="sort-indicator">
-                      {{ sortDirection === 'asc' ? ' ▲' : ' ▼' }}
+                    {{ t("tableHeaders.processName") }}
+                    <span
+                      v-if="sortColumn === 'process_name'"
+                      class="sort-indicator"
+                    >
+                      {{ sortDirection === "asc" ? " ▲" : " ▼" }}
                     </span>
                   </span>
                 </div>
               </th>
-              <th class="resizable-th" @mousedown="startColumnResize($event, 1)">
+              <th
+                class="resizable-th"
+                @mousedown="startColumnResize($event, 1)"
+              >
                 <div class="column-header" @click="toggleSort('pid')">
                   <span class="sortable-header">
-                    PID
+                    {{ t("tableHeaders.pid") }}
                     <span v-if="sortColumn === 'pid'" class="sort-indicator">
-                      {{ sortDirection === 'asc' ? ' ▲' : ' ▼' }}
+                      {{ sortDirection === "asc" ? " ▲" : " ▼" }}
                     </span>
                   </span>
                 </div>
               </th>
-              <th class="resizable-th" @mousedown="startColumnResize($event, 2)">
+              <th
+                class="resizable-th"
+                @mousedown="startColumnResize($event, 2)"
+              >
                 <div class="column-header" @click="toggleSort('protocol')">
                   <span class="sortable-header">
-                    协议
-                    <span v-if="sortColumn === 'protocol'" class="sort-indicator">
-                      {{ sortDirection === 'asc' ? ' ▲' : ' ▼' }}
+                    {{ t("tableHeaders.protocol") }}
+                    <span
+                      v-if="sortColumn === 'protocol'"
+                      class="sort-indicator"
+                    >
+                      {{ sortDirection === "asc" ? " ▲" : " ▼" }}
                     </span>
                   </span>
                 </div>
               </th>
-              <th class="resizable-th" @mousedown="startColumnResize($event, 3)">
+              <th
+                class="resizable-th"
+                @mousedown="startColumnResize($event, 3)"
+              >
                 <div class="column-header" @click="toggleSort('local_addr')">
                   <span class="sortable-header">
-                    本地地址
-                    <span v-if="sortColumn === 'local_addr'" class="sort-indicator">
-                      {{ sortDirection === 'asc' ? ' ▲' : ' ▼' }}
+                    {{ t("tableHeaders.localAddr") }}
+                    <span
+                      v-if="sortColumn === 'local_addr'"
+                      class="sort-indicator"
+                    >
+                      {{ sortDirection === "asc" ? " ▲" : " ▼" }}
                     </span>
                   </span>
                 </div>
               </th>
-              <th class="resizable-th" @mousedown="startColumnResize($event, 4)">
+              <th
+                class="resizable-th"
+                @mousedown="startColumnResize($event, 4)"
+              >
                 <div class="column-header" @click="toggleSort('local_port')">
                   <span class="sortable-header">
-                    本地端口
-                    <span v-if="sortColumn === 'local_port'" class="sort-indicator">
-                      {{ sortDirection === 'asc' ? ' ▲' : ' ▼' }}
+                    {{ t("tableHeaders.localPort") }}
+                    <span
+                      v-if="sortColumn === 'local_port'"
+                      class="sort-indicator"
+                    >
+                      {{ sortDirection === "asc" ? " ▲" : " ▼" }}
                     </span>
                   </span>
                 </div>
               </th>
-              <th class="resizable-th" @mousedown="startColumnResize($event, 5)">
+              <th
+                class="resizable-th"
+                @mousedown="startColumnResize($event, 5)"
+              >
                 <div class="column-header" @click="toggleSort('remote_addr')">
                   <span class="sortable-header">
-                    远程地址
-                    <span v-if="sortColumn === 'remote_addr'" class="sort-indicator">
-                      {{ sortDirection === 'asc' ? ' ▲' : ' ▼' }}
+                    {{ t("tableHeaders.remoteAddr") }}
+                    <span
+                      v-if="sortColumn === 'remote_addr'"
+                      class="sort-indicator"
+                    >
+                      {{ sortDirection === "asc" ? " ▲" : " ▼" }}
                     </span>
                   </span>
                 </div>
               </th>
-              <th class="resizable-th" @mousedown="startColumnResize($event, 6)">
+              <th
+                class="resizable-th"
+                @mousedown="startColumnResize($event, 6)"
+              >
                 <div class="column-header" @click="toggleSort('remote_port')">
                   <span class="sortable-header">
-                    远程端口
-                    <span v-if="sortColumn === 'remote_port'" class="sort-indicator">
-                      {{ sortDirection === 'asc' ? ' ▲' : ' ▼' }}
+                    {{ t("tableHeaders.remotePort") }}
+                    <span
+                      v-if="sortColumn === 'remote_port'"
+                      class="sort-indicator"
+                    >
+                      {{ sortDirection === "asc" ? " ▲" : " ▼" }}
                     </span>
                   </span>
                 </div>
               </th>
-              <th class="resizable-th" @mousedown="startColumnResize($event, 7)">
+              <th
+                class="resizable-th"
+                @mousedown="startColumnResize($event, 7)"
+              >
                 <div class="column-header" @click="toggleSort('state')">
                   <span class="sortable-header">
-                    状态
+                    {{ t("tableHeaders.state") }}
                     <span v-if="sortColumn === 'state'" class="sort-indicator">
-                      {{ sortDirection === 'asc' ? ' ▲' : ' ▼' }}
+                      {{ sortDirection === "asc" ? " ▲" : " ▼" }}
                     </span>
                   </span>
                 </div>
               </th>
-              <th class="resizable-th" @mousedown="startColumnResize($event, 8)">
+              <th
+                class="resizable-th"
+                @mousedown="startColumnResize($event, 8)"
+              >
                 <div class="column-header" @click="toggleSort('start_time')">
                   <span class="sortable-header">
-                    启动时间
-                    <span v-if="sortColumn === 'start_time'" class="sort-indicator">
-                      {{ sortDirection === 'asc' ? ' ▲' : ' ▼' }}
+                    {{ t("tableHeaders.startTime") }}
+                    <span
+                      v-if="sortColumn === 'start_time'"
+                      class="sort-indicator"
+                    >
+                      {{ sortDirection === "asc" ? " ▲" : " ▼" }}
                     </span>
                   </span>
                 </div>
@@ -975,16 +1128,26 @@ function isKernelProcess(processName: string | null): boolean {
               @dblclick="showProcessDetailsDialog(conn)"
               :class="{
                 'selected-row': clickedConnection === conn,
-                'changed-connection': conn.hasChanged
+                'changed-connection': conn.hasChanged,
               }"
             >
               <td class="process-name-cell">
                 <div class="process-with-icon">
-                  <img v-if="conn.icon && !isKernelProcess(conn.process_name)" :src="'data:image/png;base64,' + conn.icon" :alt="conn.process_name || 'Process Icon'" class="process-icon" />
-                  <span :class="{ 'kernel-process': isKernelProcess(conn.process_name) }">{{ conn.process_name || '-' }}</span>
+                  <img
+                    v-if="conn.icon && !isKernelProcess(conn.process_name)"
+                    :src="'data:image/png;base64,' + conn.icon"
+                    :alt="conn.process_name || 'Process Icon'"
+                    class="process-icon"
+                  />
+                  <span
+                    :class="{
+                      'kernel-process': isKernelProcess(conn.process_name),
+                    }"
+                    >{{ conn.process_name || "-" }}</span
+                  >
                 </div>
               </td>
-              <td>{{ conn.pid || '-' }}</td>
+              <td>{{ conn.pid || "-" }}</td>
               <td>{{ conn.protocol }}</td>
               <td>{{ conn.local_addr }}</td>
               <td>{{ conn.local_port }}</td>
@@ -1000,81 +1163,130 @@ function isKernelProcess(processName: string | null): boolean {
     </div>
 
     <!-- 右键菜单 -->
-    <div
-      v-if="showContextMenu"
-      class="context-menu"
-      :style="contextMenuStyle"
-    >
+    <div v-if="showContextMenu" class="context-menu" :style="contextMenuStyle">
       <ul>
-        <li @click="showProcessDetailsDialog(selectedConnection!)">进程详情</li>
-        <li @click="killProcess(selectedConnection!)">杀死进程</li>
+        <li @click="showProcessDetailsDialog(selectedConnection!)">
+          {{ t("contextMenu.processDetails") }}
+        </li>
+        <li @click="killProcess(selectedConnection!)">
+          {{ t("contextMenu.killProcess") }}
+        </li>
       </ul>
     </div>
 
     <!-- 状态栏 -->
     <div class="status-bar">
       <div class="status-item">
-        <span class="status-label">总计连接:</span>
+        <span class="status-label">{{ t("statusBar.totalConnections") }}:</span>
         <span class="status-value">{{ statusBarInfo.totalConnections }}</span>
       </div>
       <div class="status-item">
-        <span class="status-label">TCP连接:</span>
-        <span class="status-value tcp-count">{{ statusBarInfo.tcpConnections }}</span>
+        <span class="status-label">{{ t("statusBar.tcpConnections") }}:</span>
+        <span class="status-value tcp-count">{{
+          statusBarInfo.tcpConnections
+        }}</span>
       </div>
       <div class="status-item">
-        <span class="status-label">UDP连接:</span>
-        <span class="status-value udp-count">{{ statusBarInfo.udpConnections }}</span>
+        <span class="status-label">{{ t("statusBar.udpConnections") }}:</span>
+        <span class="status-value udp-count">{{
+          statusBarInfo.udpConnections
+        }}</span>
       </div>
       <div class="status-item">
-        <span class="status-label">已建立:</span>
-        <span class="status-value established-count">{{ statusBarInfo.establishedConnections }}</span>
+        <span class="status-label">{{ t("statusBar.established") }}:</span>
+        <span class="status-value established-count">{{
+          statusBarInfo.establishedConnections
+        }}</span>
       </div>
       <div class="status-item">
-        <span class="status-label">监听:</span>
-        <span class="status-value listen-count">{{ statusBarInfo.listenConnections }}</span>
+        <span class="status-label">{{ t("statusBar.listen") }}:</span>
+        <span class="status-value listen-count">{{
+          statusBarInfo.listenConnections
+        }}</span>
       </div>
       <div class="status-item">
-        <span class="status-label">等待:</span>
-        <span class="status-value wait-count">{{ statusBarInfo.timeWaitConnections }}</span>
+        <span class="status-label">{{ t("statusBar.wait") }}:</span>
+        <span class="status-value wait-count">{{
+          statusBarInfo.timeWaitConnections
+        }}</span>
       </div>
       <div class="status-item">
-        <span class="status-label">关闭等待:</span>
-        <span class="status-value close-wait-count">{{ statusBarInfo.closeWaitConnections }}</span>
+        <span class="status-label">{{ t("statusBar.closeWait") }}:</span>
+        <span class="status-value close-wait-count">{{
+          statusBarInfo.closeWaitConnections
+        }}</span>
       </div>
       <div class="status-item">
-        <span class="status-label">其他状态:</span>
-        <span class="status-value other-count">{{ statusBarInfo.otherConnections }}</span>
+        <span class="status-label">{{ t("statusBar.other") }}:</span>
+        <span class="status-value other-count">{{
+          statusBarInfo.otherConnections
+        }}</span>
       </div>
       <div class="status-item">
-        <span class="status-label">内核连接:</span>
-        <span class="status-value kernel-count">{{ statusBarInfo.kernelConnections }}</span>
+        <span class="status-label">{{ t("statusBar.kernel") }}:</span>
+        <span class="status-value kernel-count">{{
+          statusBarInfo.kernelConnections
+        }}</span>
       </div>
       <div class="status-item">
-        <span class="status-label">上次更新:</span>
+        <span class="status-label">{{ t("statusBar.lastUpdate") }}:</span>
         <span class="status-value">{{ statusBarInfo.lastUpdate }}</span>
       </div>
       <div class="status-item" v-if="statusBarInfo.refreshInterval">
-        <span class="status-label">自动刷新:</span>
-        <span class="status-value">{{ statusBarInfo.refreshInterval }}秒</span>
+        <span class="status-label">{{ t("statusBar.refreshInterval") }}:</span>
+        <span class="status-value"
+          >{{ statusBarInfo.refreshInterval
+          }}{{ t("menu.refreshInterval") }}</span
+        >
       </div>
     </div>
 
     <!-- 进程详情弹窗 -->
-    <div v-if="showProcessDetails" class="modal-overlay" @click="showProcessDetails = false">
+    <div
+      v-if="showProcessDetails"
+      class="modal-overlay"
+      @click="showProcessDetails = false"
+    >
       <div class="modal-content" @click.stop>
         <div class="modal-header">
-          <h3>进程详情</h3>
-          <button class="close-button" @click="showProcessDetails = false">×</button>
+          <h3>{{ t("modal.processDetails") }}</h3>
+          <button class="close-button" @click="showProcessDetails = false">
+            ×
+          </button>
         </div>
         <div v-if="processDetails" class="process-details">
-          <p><strong>PID:</strong> <span>{{ processDetails.pid }}</span></p>
-          <p><strong>名称:</strong> <span>{{ processDetails.name }}</span></p>
-          <p><strong>命令行:</strong> <span>{{ processDetails.command_line }}</span></p>
-          <p><strong>执行路径:</strong> <span>{{ processDetails.executable_path }}</span></p>
-          <p><strong>内存使用:</strong> <span>{{ formatMemoryUsage(processDetails.memory_usage) }}</span></p>
-          <p><strong>CPU使用率:</strong> <span>{{ processDetails.cpu_usage }}%</span></p>
-          <p><strong>父进程PID:</strong> <span>{{ processDetails.parent_pid }}</span></p>
-          <p><strong>启动时间:</strong> <span>{{ formatDate(processDetails.start_time) }}</span></p>
+          <p>
+            <strong>{{ t("modal.pid") }}:</strong>
+            <span>{{ processDetails.pid }}</span>
+          </p>
+          <p>
+            <strong>{{ t("modal.name") }}:</strong>
+            <span>{{ processDetails.name }}</span>
+          </p>
+          <p>
+            <strong>{{ t("modal.commandLine") }}:</strong>
+            <span>{{ processDetails.command_line }}</span>
+          </p>
+          <p>
+            <strong>{{ t("modal.executablePath") }}:</strong>
+            <span>{{ processDetails.executable_path }}</span>
+          </p>
+          <p>
+            <strong>{{ t("modal.memoryUsage") }}:</strong>
+            <span>{{ formatMemoryUsage(processDetails.memory_usage) }}</span>
+          </p>
+          <p>
+            <strong>{{ t("modal.cpuUsage") }}:</strong>
+            <span>{{ processDetails.cpu_usage }}%</span>
+          </p>
+          <p>
+            <strong>{{ t("modal.parentPid") }}:</strong>
+            <span>{{ processDetails.parent_pid }}</span>
+          </p>
+          <p>
+            <strong>{{ t("modal.startTime") }}:</strong>
+            <span>{{ formatDate(processDetails.start_time) }}</span>
+          </p>
         </div>
       </div>
     </div>
@@ -1084,11 +1296,11 @@ function isKernelProcess(processName: string | null): boolean {
 <style scoped>
 .connections-table-container {
   width: 100%;
-  overflow-x: auto;  /* 当内容超出宽度时显示横向滚动条 */
-  overflow-y: auto;  /* 当内容超出高度时显示纵向滚动条 */
-  flex: 1 1 auto;   /* 允许增长、收缩，基础大小为自动 */
+  overflow-x: auto; /* 当内容超出宽度时显示横向滚动条 */
+  overflow-y: auto; /* 当内容超出高度时显示纵向滚动条 */
+  flex: 1 1 auto; /* 允许增长、收缩，基础大小为自动 */
   margin-top: 0;
-  min-height: 0;    /* 允许容器收缩 */
+  min-height: 0; /* 允许容器收缩 */
   display: flex;
   flex-direction: column;
 }
@@ -1096,25 +1308,25 @@ function isKernelProcess(processName: string | null): boolean {
 .table-wrapper {
   width: 100%;
   display: block;
-  flex: 1;                /* 让表格填充可用空间 */
-  min-height: 0;          /* 允许内容收缩 */
-  overflow-y: auto;       /* 垂直滚动 */
+  flex: 1; /* 让表格填充可用空间 */
+  min-height: 0; /* 允许内容收缩 */
+  overflow-y: auto; /* 垂直滚动 */
   min-width: max-content; /* 确保表格至少适应内容宽度 */
-  overflow-x: auto;       /* 水平滚动，允许表格不完全填充容器 */
+  overflow-x: auto; /* 水平滚动，允许表格不完全填充容器 */
 }
 
 .connections-table {
-  width: fit-content;  /* 根据内容调整宽度 */
-  min-width: fit-content;  /* 不强制占满容器宽度 */
+  width: fit-content; /* 根据内容调整宽度 */
+  min-width: fit-content; /* 不强制占满容器宽度 */
   border-collapse: collapse;
-  font-size: 0.85em;  /* 略微减小字体以适应紧凑设计 */
+  font-size: 0.85em; /* 略微减小字体以适应紧凑设计 */
   border: none;
   border-radius: 0;
-  table-layout: fixed;  /* 使用fixed布局以精确控制列宽 */
-  flex-shrink: 0;  /* 防止表格被压缩 */
+  table-layout: fixed; /* 使用fixed布局以精确控制列宽 */
+  flex-shrink: 0; /* 防止表格被压缩 */
   margin-bottom: 0; /* 确保表格紧贴容器底部 */
-  display: table;   /* 使用表格显示 */
-  max-width: 100%;  /* 限制表格最大宽度不超过容器 */
+  display: table; /* 使用表格显示 */
+  max-width: 100%; /* 限制表格最大宽度不超过容器 */
 }
 
 .connections-table thead tr {
@@ -1124,10 +1336,10 @@ function isKernelProcess(processName: string | null): boolean {
   font-weight: 600;
   border-bottom: 2px solid #e5e7eb;
   height: 24px;
-  position: sticky;      /* 固定表头 */
-  top: 0;               /* 固定在顶部 */
-  z-index: 10;          /* 确保表头在内容之上 */
-  display: table-row;    /* 确保sticky在表格行上正确工作 */
+  position: sticky; /* 固定表头 */
+  top: 0; /* 固定在顶部 */
+  z-index: 10; /* 确保表头在内容之上 */
+  display: table-row; /* 确保sticky在表格行上正确工作 */
 }
 
 .connections-table tbody {
@@ -1136,7 +1348,7 @@ function isKernelProcess(processName: string | null): boolean {
 
 .connections-table th,
 .connections-table td {
-  padding: 2px 3px;  /* 左右padding 3px */
+  padding: 2px 3px; /* 左右padding 3px */
   text-align: left;
   border-bottom: 1px solid #e5e7eb;
   color: #111827;
@@ -1258,7 +1470,7 @@ function isKernelProcess(processName: string | null): boolean {
 
 /* 添加拖动区域 */
 .resizable-th::after {
-  content: '';
+  content: "";
   position: absolute;
   right: 0;
   top: 0;
@@ -1359,7 +1571,7 @@ function isKernelProcess(processName: string | null): boolean {
 
 /* 添加拖动区域 */
 .resizable-th::after {
-  content: '';
+  content: "";
   position: absolute;
   right: 0;
   top: 0;
@@ -1439,7 +1651,9 @@ function isKernelProcess(processName: string | null): boolean {
   background: #ffffff;
   border: 1px solid #d1d5db;
   border-radius: 6px;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  box-shadow:
+    0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
   overflow: hidden;
   z-index: 10000;
   min-width: 150px;
@@ -1491,7 +1705,9 @@ function isKernelProcess(processName: string | null): boolean {
 .modal-content {
   background: white;
   border-radius: 8px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  box-shadow:
+    0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 10px 10px -5px rgba(0, 0, 0, 0.04);
   width: 500px;
   max-width: 90vw;
   max-height: 80vh;
@@ -1564,8 +1780,6 @@ function isKernelProcess(processName: string | null): boolean {
   overflow-wrap: break-word; /* 在长单词或URL地址内部进行换行 */
   white-space: pre-wrap; /* 保留空白符序列，但是正常换行 */
 }
-
-
 </style>
 
 <style>
@@ -1585,12 +1799,13 @@ function isKernelProcess(processName: string | null): boolean {
   -webkit-text-size-adjust: 100%;
 }
 
-body, html {
+body,
+html {
   margin: 0;
   padding: 0;
   height: 100%;
   width: 100%;
-  overflow: hidden;  /* 防止出现全局滚动条 */
+  overflow: hidden; /* 防止出现全局滚动条 */
 }
 
 .container {
@@ -1598,11 +1813,11 @@ body, html {
   padding: 0;
   display: flex;
   flex-direction: column;
-  height: 100vh;  /* 使用确切的高度 */
-  width: 100vw;
-  flex: 1;
-  min-height: 0;  /* 允许flex子项收缩 */
-  min-width: 0;   /* 允许flex子项收缩 */
+  height: 100vh; /* 使用确切的高度 */
+  width: 100%; /* 使用百分比宽度，避免滚动条问题 */
+  flex: 1 1 auto;
+  min-height: 0; /* 允许flex子项收缩 */
+  min-width: 0; /* 允许flex子项收缩 */
 }
 
 .logo {
@@ -1720,26 +1935,24 @@ button {
   }
 }
 
-/* 菜单栏样式 */
-.menu-bar {
+/* 主菜单容器样式 - 用于将左右菜单组两端对齐 */
+.main-menu-container {
   display: flex;
-  justify-content: flex-start;
+  justify-content: flex-start; /* 改为flex-start，使用margin-left: auto来分离元素 */
   align-items: center;
-  padding: 6px 10px;
+  width: 100%;
+  padding: 6px 10px; /* 恢复左右padding以提供内边距 */
   background-color: #e2e8f0;
   border-bottom: 1px solid #cbd5e1;
-  gap: 15px;
-  flex-shrink: 0; /* 防止菜单栏被压缩 */
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.12),
+    0 1px 2px rgba(0, 0, 0, 0.24);
   min-height: 32px;
-  flex-wrap: nowrap; /* 防止换行 */
-  overflow: auto; /* 允许水平滚动，而不是隐藏溢出内容 */
-  min-width: max-content; /* 内容宽度至少等于所有项目的总和，确保间隙固定 */
-  width: 100%; /* 确保菜单栏占据整个容器宽度 */
   position: sticky; /* 使菜单栏固定在顶部 */
   top: 0; /* 固定在顶部 */
   z-index: 100; /* 确保菜单栏在其他内容之上 */
-  flex: 0 0 auto; /* 不伸缩，按内容大小 */
+  flex-wrap: nowrap; /* 防止换行 */
+  min-width: fit-content; /* 确保菜单栏宽度适应内容 */
 }
 
 .menu-group {
@@ -1749,22 +1962,26 @@ button {
   flex-shrink: 0; /* 防止菜单组被压缩 */
   flex-wrap: nowrap; /* 防止组内元素换行 */
   white-space: nowrap; /* 防止文字换行 */
+  min-width: fit-content; /* 确保内容适应其内容 */
+  padding-right: 10px;
 }
 
-/* 搜索框组固定宽度 */
+/* 搜索框组使用弹性布局 */
 .search-group {
   display: flex;
   align-items: center;
   flex-shrink: 0; /* 禁止搜索组缩小 */
-  min-width: 200px; /* 增加最小宽度以避免重叠 */
-  width: 200px; /* 增加宽度以避免重叠 */
+  min-width: 150px; /* 减少最小宽度 */
+  max-width: 200px; /* 限制最大宽度 */
+  padding: 0 5px; /* 减少padding */
   gap: 5px; /* 在标签和输入框之间添加间距 */
 }
 
 .search-group .menu-search {
-  min-width: 120px; /* 设置合适的最小宽度 */
-  width: 120px; /* 设置合适的宽度 */
-  flex: none; /* 禁止伸缩 */
+  min-width: 80px; /* 减少最小宽度 */
+  max-width: 120px; /* 限制最大宽度 */
+  flex: 1; /* 允许输入框伸缩 */
+  flex-basis: auto; /* 基础大小自适应 */
 }
 
 .menu-label {
@@ -1835,7 +2052,6 @@ button {
   gap: 5px;
   flex-shrink: 0; /* 防止刷新控件被压缩 */
   flex: none; /* 禁止伸缩 */
-  width: 220px; /* 增加宽度以更好容纳按钮和下拉菜单，避免重叠 */
 }
 
 .refresh-toggle-btn {
@@ -1912,7 +2128,7 @@ button {
 
 /* 为每个状态项添加右侧分隔符（最后一个除外） */
 .status-item:not(:last-child)::after {
-  content: '|';
+  content: "|";
   margin-left: 25px; /* 在分隔符左侧添加一些间距 */
   color: #9ca3af; /* 分隔符颜色 */
   opacity: 0.7; /* 稍微降低分隔符的透明度 */
@@ -2008,5 +2224,90 @@ button {
   .status-value.kernel-count {
     color: #fda4af; /* 浅红粉色 */
   }
+}
+
+/* 语言切换按钮样式 */
+.lang-btn {
+  padding: 3px 8px;
+  border: 1px solid #cbd5e1;
+  background-color: #e2e8f0;
+  color: #475569;
+  font-size: 0.75rem;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 40px;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 500;
+  margin-left: 5px;
+}
+
+.lang-btn:hover {
+  background-color: #f1f5f9;
+  border-color: #94a3b8;
+  color: #334155;
+}
+
+.lang-btn.active {
+  background-color: #f8fafc;
+  color: #1e293b;
+  border: 1px solid #94a3b8;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+  font-weight: 600;
+}
+
+/* 语言切换下拉框样式 */
+.lang-select {
+  padding: 3px 8px;
+  border: 1px solid #cbd5e1;
+  background-color: #ffffff;
+  color: #475569;
+  font-size: 0.75rem;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 80px;
+  font-weight: 500;
+  background-color: #e2e8f0;
+}
+
+.lang-select:hover {
+  background-color: #f1f5f9;
+  border-color: #94a3b8;
+  color: #334155;
+}
+
+.lang-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+.state-select {
+  padding: 3px 8px;
+  border: 1px solid #cbd5e1;
+  background-color: #ffffff;
+  color: #475569;
+  font-size: 0.75rem;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 80px;
+  font-weight: 500;
+  background-color: #e2e8f0;
+}
+
+.state-select:hover {
+  background-color: #f1f5f9;
+  border-color: #94a3b8;
+  color: #334155;
+}
+
+.state-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
 }
 </style>

@@ -1,0 +1,79 @@
+{
+  "appTitle": "TCPView",
+  "zh": "中文",
+  "en": "English",
+  "menu": {
+    "language": "Language:",
+    "protocol": "Protocol:",
+    "protocolAll": "All",
+    "protocolTCP": "TCP",
+    "protocolUDP": "UDP",
+    "state": "State:",
+    "stateAll": "All",
+    "stateListen": "Listen",
+    "stateEstablished": "Established",
+    "stateTimeWait": "Time Wait",
+    "stateCloseWait": "Close Wait",
+    "stateSynSent": "Syn Sent",
+    "stateSynRecv": "Syn Received",
+    "stateFinWait1": "Fin Wait 1",
+    "stateFinWait2": "Fin Wait 2",
+    "stateLastAck": "Last Ack",
+    "stateClosing": "Closing",
+    "stateUnconn": "Unconnected",
+    "searchProcess": "Search Process:",
+    "searchPlaceholder": "Enter process name...",
+    "searchLocalAddr": "Local Address:",
+    "localAddrPlaceholder": "Enter local address...",
+    "autoRefresh": "Auto Refresh:",
+    "refreshStart": "Start",
+    "refreshStop": "Stop",
+    "refreshInterval": "sec"
+  },
+  "tableHeaders": {
+    "processName": "Process Name",
+    "pid": "PID",
+    "protocol": "Protocol",
+    "localAddr": "Local Address",
+    "localPort": "Local Port",
+    "remoteAddr": "Remote Address",
+    "remotePort": "Remote Port",
+    "state": "State",
+    "startTime": "Start Time"
+  },
+  "contextMenu": {
+    "processDetails": "Process Details",
+    "killProcess": "Kill Process"
+  },
+  "statusBar": {
+    "totalConnections": "Total Connections",
+    "tcpConnections": "TCP Connections",
+    "udpConnections": "UDP Connections",
+    "established": "Established",
+    "listen": "Listen",
+    "wait": "Time Wait",
+    "closeWait": "Close Wait",
+    "other": "Other State",
+    "kernel": "Kernel Connections",
+    "lastUpdate": "Last Update",
+    "refreshInterval": "Auto Refresh"
+  },
+  "modal": {
+    "processDetails": "Process Details",
+    "pid": "PID",
+    "name": "Name",
+    "commandLine": "Command Line",
+    "executablePath": "Executable Path",
+    "memoryUsage": "Memory Usage",
+    "cpuUsage": "CPU Usage",
+    "parentPid": "Parent PID",
+    "startTime": "Start Time"
+  },
+  "alerts": {
+    "processKilled": "Successfully killed process: {name} (PID: {pid})",
+    "processKillFailed": "Failed to kill process: {error}",
+    "getConnectionsFailed": "Failed to get connections: {error}",
+    "getProcessDetailsFailed": "Failed to get process details: {error}",
+    "connectionStateChanged": "Detected {count} connection(s) with state changes"
+  }
+}

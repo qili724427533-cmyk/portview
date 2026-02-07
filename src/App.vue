@@ -45,6 +45,9 @@ const refreshIntervals = [1, 2, 3, 5, 10]; // 可选的刷新间隔（秒）
 
 const selectedRefreshInterval = ref(1); // 默认选择1秒
 
+// 主题相关状态
+const isDarkMode = ref(false);
+
 // 右键菜单相关状态
 const showContextMenu = ref(false);
 const contextMenuPosition = ref({ x: 0, y: 0 });
@@ -751,6 +754,9 @@ onMounted(() => {
     locale.value = savedLang as "zh" | "en";
   }
 
+  // 检查并应用主题偏好
+  checkSystemThemePreference();
+
   loadConnections();
 
   // 监听窗口大小变化事件
@@ -845,6 +851,39 @@ function changeLanguage(lang: "zh" | "en") {
   locale.value = lang;
   localStorage.setItem("locale", lang); // 保存用户选择的语言到localStorage
 }
+
+// 主题切换功能
+function toggleTheme() {
+  isDarkMode.value = !isDarkMode.value;
+  if (isDarkMode.value) {
+    document.documentElement.classList.add("dark");
+    localStorage.setItem("theme", "dark");
+  } else {
+    document.documentElement.classList.remove("dark");
+    localStorage.setItem("theme", "light");
+  }
+}
+
+// 检查系统主题偏好
+function checkSystemThemePreference() {
+  const savedTheme = localStorage.getItem("theme");
+  const systemPrefersDark = window.matchMedia(
+    "(prefers-color-scheme: dark)",
+  ).matches;
+
+  if (savedTheme) {
+    isDarkMode.value = savedTheme === "dark";
+  } else {
+    isDarkMode.value = systemPrefersDark;
+  }
+
+  // 应用主题到页面
+  if (isDarkMode.value) {
+    document.documentElement.classList.add("dark");
+  } else {
+    document.documentElement.classList.remove("dark");
+  }
+}
 </script>
 
 <template>
@@ -900,7 +939,7 @@ function changeLanguage(lang: "zh" | "en") {
         </select>
       </div>
 
-      <div class="menu-group search-group">
+      <div class="menu-group">
         <label class="menu-label">{{ t("menu.searchProcess") }}</label>
         <input
           type="text"
@@ -911,7 +950,7 @@ function changeLanguage(lang: "zh" | "en") {
         />
       </div>
 
-      <div class="menu-group search-group">
+      <div class="menu-group">
         <label class="menu-label">{{ t("menu.searchLocalAddr") }}</label>
         <input
           type="text"
@@ -951,23 +990,30 @@ function changeLanguage(lang: "zh" | "en") {
           </select>
         </div>
       </div>
-      <!-- 右侧菜单组 - 包含语言选择 -->
       <div class="menu-group">
-        <div class="language-selector">
-          <label class="menu-label">{{ t("menu.language") }}</label>
-          <select
-            @change="
-              changeLanguage(
-                ($event.target as HTMLSelectElement).value as 'zh' | 'en',
-              )
-            "
-            :value="$i18n.locale"
-            class="lang-select"
-          >
-            <option value="zh">{{ t("zh") }}</option>
-            <option value="en">{{ t("en") }}</option>
-          </select>
-        </div>
+        <label class="menu-label">{{ t("menu.language") }}</label>
+        <select
+          @change="
+            changeLanguage(
+              ($event.target as HTMLSelectElement).value as 'zh' | 'en',
+            )
+          "
+          :value="$i18n.locale"
+          class="lang-select"
+        >
+          <option value="zh">{{ t("zh") }}</option>
+          <option value="en">{{ t("en") }}</option>
+        </select>
+      </div>
+      <div class="menu-group">
+        <label class="menu-label">{{ t("menu.theme") }}</label>
+        <button
+          class="theme-toggle-btn"
+          @click="toggleTheme"
+          :title="isDarkMode ? t('menu.lightTheme') : t('menu.darkTheme')"
+        >
+          {{ isDarkMode ? t("menu.lightTheme") : t("menu.darkTheme") }}
+        </button>
       </div>
     </div>
 
@@ -1966,22 +2012,14 @@ button {
   padding-right: 10px;
 }
 
-/* 搜索框组使用弹性布局 */
-.search-group {
+/* 特别针对包含主题和语言选择的菜单组 */
+.menu-group:last-child {
   display: flex;
   align-items: center;
-  flex-shrink: 0; /* 禁止搜索组缩小 */
-  min-width: 150px; /* 减少最小宽度 */
-  max-width: 200px; /* 限制最大宽度 */
-  padding: 0 5px; /* 减少padding */
-  gap: 5px; /* 在标签和输入框之间添加间距 */
-}
-
-.search-group .menu-search {
-  min-width: 80px; /* 减少最小宽度 */
-  max-width: 120px; /* 限制最大宽度 */
-  flex: 1; /* 允许输入框伸缩 */
-  flex-basis: auto; /* 基础大小自适应 */
+  gap: 8px;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 .menu-label {
@@ -2226,44 +2264,10 @@ button {
   }
 }
 
-/* 语言切换按钮样式 */
-.lang-btn {
-  padding: 3px 8px;
-  border: 1px solid #cbd5e1;
-  background-color: #e2e8f0;
-  color: #475569;
-  font-size: 0.75rem;
-  border-radius: 3px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  min-width: 40px;
-  text-align: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 500;
-  margin-left: 5px;
-}
-
-.lang-btn:hover {
-  background-color: #f1f5f9;
-  border-color: #94a3b8;
-  color: #334155;
-}
-
-.lang-btn.active {
-  background-color: #f8fafc;
-  color: #1e293b;
-  border: 1px solid #94a3b8;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
-  font-weight: 600;
-}
-
 /* 语言切换下拉框样式 */
 .lang-select {
   padding: 3px 8px;
   border: 1px solid #cbd5e1;
-  background-color: #ffffff;
   color: #475569;
   font-size: 0.75rem;
   border-radius: 3px;
@@ -2288,7 +2292,6 @@ button {
 .state-select {
   padding: 3px 8px;
   border: 1px solid #cbd5e1;
-  background-color: #ffffff;
   color: #475569;
   font-size: 0.75rem;
   border-radius: 3px;
@@ -2309,5 +2312,80 @@ button {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+
+/* 主题切换按钮样式 */
+.theme-toggle-btn {
+  padding: 3px 8px;
+  border: 1px solid #cbd5e1;
+  background-color: #e2e8f0;
+  color: #475569;
+  font-size: 0.75rem;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: fit-content;
+  text-align: center;
+  font-weight: 500;
+}
+
+.theme-toggle-btn:hover {
+  background-color: #f1f5f9;
+  border-color: #94a3b8;
+  color: #334155;
+}
+
+/* 暗色主题样式 */
+.dark-theme {
+  background-color: #1f2937;
+  color: #f9fafb;
+}
+
+.dark-theme .main-menu-container {
+  background-color: #1f2937;
+  color: #f9fafb;
+  border-bottom: 2px solid #374151;
+}
+
+.dark-theme .protocol-btn {
+  background-color: #374151;
+  color: #d1d5db;
+  border: 1px solid #4b5563;
+}
+
+.dark-theme .protocol-btn:hover {
+  background-color: #4b5563;
+  border-color: #6b7280;
+  color: #e5e7eb;
+}
+
+.dark-theme .protocol-btn.active {
+  background-color: #4f46e5;
+  color: #f9fafb;
+  border: 1px solid #6366f1;
+}
+
+.dark-theme .menu-search {
+  background-color: #111827;
+  color: #f9fafb;
+  border: 1px solid #4b5563;
+}
+
+.dark-theme .refresh-toggle-btn {
+  background-color: #374151;
+  color: #d1d5db;
+  border: 1px solid #4b5563;
+}
+
+.dark-theme .refresh-toggle-btn:hover {
+  background-color: #4b5563;
+  border-color: #6b7280;
+  color: #e5e7eb;
+}
+
+.dark-theme .refresh-toggle-btn.active {
+  background-color: #10b981; /* 绿色表示激活状态 */
+  color: white;
+  border: 1px solid #059669;
 }
 </style>

@@ -4,6 +4,9 @@
   "en": "English",
   "menu": {
     "language": "Language:",
+    "theme": "Theme:",
+    "darkTheme": "Dark",
+    "lightTheme": "Light",
     "protocol": "Protocol:",
     "protocolAll": "All",
     "protocolTCP": "TCP",

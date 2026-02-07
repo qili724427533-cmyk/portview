@@ -4,6 +4,9 @@
   "en": "English",
   "menu": {
     "language": "语言:",
+    "theme": "主题:",
+    "darkTheme": "暗色",
+    "lightTheme": "亮色",
     "protocol": "协议:",
     "protocolAll": "全部",
     "protocolTCP": "TCP",

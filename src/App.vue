@@ -1935,50 +1935,49 @@ button {
   margin-right: 5px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #111827;
-  }
+.dark :root {
+  color: #f6f6f6;
+  background-color: #111827;
+}
 
-  a:hover {
-    color: #24c8db;
-  }
+.dark a:hover {
+  color: #24c8db;
+}
 
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
-  button:active {
-    background-color: #0f0f0f69;
-  }
+.dark input,
+.dark button {
+  color: #ffffff;
+  background-color: #0f0f0f98;
+}
 
-  .header-row-div {
-    background-color: #1f2937;
-    color: #f9fafb;
-    border-bottom: 2px solid #374151;
-  }
+.dark button:active {
+  background-color: #0f0f0f69;
+}
 
-  .header-cell-div,
-  .data-cell-div {
-    border-bottom: 1px solid #374151;
-    color: #f9fafb;
-  }
+.dark .header-row-div {
+  background-color: #1f2937;
+  color: #f9fafb;
+  border-bottom: 2px solid #374151;
+}
 
-  .data-row-div.even {
-    background-color: #374151;
-    color: #f9fafb;
-  }
+.dark .header-cell-div,
+.dark .data-cell-div {
+  border-bottom: 1px solid #374151;
+  color: #f9fafb;
+}
 
-  .data-row-div.odd {
-    background-color: #1f2937;
-    color: #f9fafb;
-  }
+.dark .data-row-div.even {
+  background-color: #374151;
+  color: #f9fafb;
+}
 
-  .data-row-div:hover {
-    background-color: #4b5563;
-  }
+.dark .data-row-div.odd {
+  background-color: #1f2937;
+  color: #f9fafb;
+}
+
+.dark .data-row-div:hover {
+  background-color: #4b5563;
 }
 
 /* 主菜单容器样式 - 用于将左右菜单组两端对齐 */
@@ -2215,53 +2214,51 @@ button {
   color: #7c2d12; /* 深红棕色 */
 }
 
-/* 深色模式下的状态栏样式 */
-@media (prefers-color-scheme: dark) {
-  .status-bar {
-    background-color: #1f2937;
-    border-top: 1px solid #374151;
-    color: #d1d5db;
-  }
+/* 深色模式下的状态栏样式 - 深色版 */
+.dark .status-bar {
+  background-color: #1a202c; /* 深灰蓝 */
+  border-top: 1px solid #2d3748; /* 深中灰蓝 */
+  color: #a0aec0; /* 中等亮度的灰蓝 */
+}
 
-  .status-label {
-    color: #9ca3af;
-  }
+.dark .status-label {
+  color: #718096; /* 中灰 */
+}
 
-  .status-value {
-    color: #f9fafb;
-  }
+.dark .status-value {
+  color: #a0aec0; /* 中等亮度的灰蓝 */
+}
 
-  .status-value.tcp-count {
-    color: #60a5fa; /* 浅蓝色 */
-  }
+.dark .status-value.tcp-count {
+  color: #63b3ed; /* 深一些的蓝色 */
+}
 
-  .status-value.udp-count {
-    color: #fb923c; /* 浅橙色 */
-  }
+.dark .status-value.udp-count {
+  color: #f6ad55; /* 深一些的橙色 */
+}
 
-  .status-value.established-count {
-    color: #4ade80; /* 浅绿色 */
-  }
+.dark .status-value.established-count {
+  color: #68d391; /* 深一些的绿色 */
+}
 
-  .status-value.listen-count {
-    color: #93c5fd; /* 浅蓝色 */
-  }
+.dark .status-value.listen-count {
+  color: #90cdf4; /* 深一些的蓝色 */
+}
 
-  .status-value.wait-count {
-    color: #facc15; /* 浅黄色 */
-  }
+.dark .status-value.wait-count {
+  color: #f6e05e; /* 深一些的黄色 */
+}
 
-  .status-value.close-wait-count {
-    color: #fb9467; /* 浅橙色 */
-  }
+.dark .status-value.close-wait-count {
+  color: #fc8181; /* 深一些的红色 */
+}
 
-  .status-value.other-count {
-    color: #c4b5fd; /* 浅紫色 */
-  }
+.dark .status-value.other-count {
+  color: #b0a1e6; /* 深一些的紫色 */
+}
 
-  .status-value.kernel-count {
-    color: #fda4af; /* 浅红粉色 */
-  }
+.dark .status-value.kernel-count {
+  color: #f59f9f; /* 深一些的红粉色 */
 }
 
 /* 语言切换下拉框样式 */
@@ -2387,5 +2384,198 @@ button {
   background-color: #10b981; /* 绿色表示激活状态 */
   color: white;
   border: 1px solid #059669;
+}
+
+/* 为 .dark 类添加相同样式以支持主题切换 - 深色版 */
+.dark {
+  background-color: #1a202c; /* 深灰蓝 */
+  color: #a0aec0; /* 中等亮度的灰蓝，确保可读性 */
+}
+
+.dark .main-menu-container {
+  background-color: #1a202c; /* 深灰蓝 */
+  color: #a0aec0; /* 中等亮度的灰蓝 */
+  border-bottom: 2px solid #2d3748; /* 深中灰蓝 */
+}
+
+.dark .menu-group {
+  /* 菜单组容器在暗色主题下不需要特殊样式，继承父容器样式 */
+}
+
+.dark .menu-label {
+  color: #a0aec0; /* 中等亮度的灰蓝，与菜单栏文字颜色一致 */
+}
+
+.dark .protocol-btn {
+  background-color: #2d3748; /* 深中灰蓝 */
+  color: #a0aec0; /* 中等亮度的灰蓝 */
+  border: 1px solid #4a5568; /* 中灰蓝 */
+}
+
+.dark .protocol-btn:hover {
+  background-color: #4a5568; /* 中灰蓝 */
+  border-color: #718096; /* 浅中灰 */
+  color: #cbd5e0; /* 浅灰蓝 */
+}
+
+.dark .protocol-btn.active {
+  background-color: #4c6ef5; /* 深蓝色 */
+  color: #e2e8f0; /* 浅灰蓝 */
+  border: 1px solid #6c8aee; /* 浅蓝色 */
+}
+
+.dark .menu-search {
+  background-color: #0f1419; /* 极深的灰蓝 */
+  color: #a0aec0; /* 中等亮度的灰蓝 */
+  border: 1px solid #4a5568; /* 中灰蓝 */
+}
+
+.dark .menu-search:focus {
+  border-color: #4c6ef5; /* 深蓝色，与整体风格一致 */
+  box-shadow: 0 0 0 2px rgba(76, 110, 245, 0.3); /* 深蓝色透明阴影 */
+}
+
+.dark .refresh-toggle-btn {
+  background-color: #2d3748; /* 深中灰蓝 */
+  color: #a0aec0; /* 中等亮度的灰蓝 */
+  border: 1px solid #4a5568; /* 中灰蓝 */
+}
+
+.dark .refresh-toggle-btn:hover {
+  background-color: #4a5568; /* 中灰蓝 */
+  border-color: #718096; /* 浅中灰 */
+  color: #cbd5e0; /* 浅灰蓝 */
+}
+
+.dark .refresh-toggle-btn.active {
+  background-color: #38a169; /* 深橄榄绿 */
+  color: #e2e8f0; /* 浅灰蓝 */
+  border: 1px solid #4ea27a; /* 浅橄榄绿 */
+}
+
+/* 表格暗色主题样式 - 深色版 */
+.dark .connections-table thead tr {
+  background-color: #1a202c; /* 深灰蓝 */
+  color: #a0aec0; /* 中等亮度的灰蓝 */
+  border-bottom: 2px solid #2d3748; /* 深中灰蓝 */
+}
+
+.dark .connections-table th,
+.dark .connections-table td {
+  border-bottom: 1px solid #2d3748; /* 深中灰蓝 */
+  color: #a0aec0; /* 中等亮度的灰蓝 */
+}
+
+.dark .connections-table th:not(:last-child),
+.dark .connections-table td:not(:last-child) {
+  border-right: 1px solid #2d3748; /* 深中灰蓝 */
+}
+
+.dark .connections-table tbody tr:nth-of-type(even) {
+  background-color: #2d3748; /* 深中灰蓝 */
+}
+
+.dark .connections-table tbody tr:nth-of-type(odd) {
+  background-color: #1a202c; /* 深灰蓝 */
+}
+
+.dark .connections-table tbody tr:hover {
+  background-color: #4a5568; /* 中灰蓝 */
+}
+
+.dark .connections-table tbody tr.selected-row {
+  background-color: #3c4bcb !important; /* 深蓝紫色 */
+}
+
+.dark .connections-table tbody tr.selected-row td,
+.dark .connections-table tbody tr.selected-row th {
+  color: #e2e8f0 !important; /* 浅灰蓝 */
+}
+
+/* 状态变化的连接项在暗色主题下的样式 - 深色版 */
+.dark .connections-table tbody tr.changed-connection {
+  background-color: #b7791f !important; /* 深金黄色 */
+}
+
+.dark .connections-table tbody tr.changed-connection td,
+.dark .connections-table tbody tr.changed-connection th {
+  color: #e2e8f0 !important; /* 浅灰蓝 */
+}
+
+/* 菜单栏中select元素的暗色主题样式 - 深色版 */
+.dark .lang-select,
+.dark .state-select,
+.dark .refresh-interval-select {
+  background-color: #2d3748; /* 深中灰蓝 */
+  color: #a0aec0; /* 中等亮度的灰蓝 */
+  border: 1px solid #4a5568; /* 中灰蓝 */
+}
+
+.dark .lang-select:hover,
+.dark .state-select:hover,
+.dark .refresh-interval-select:hover {
+  background-color: #4a5568; /* 中灰蓝 */
+  border-color: #718096; /* 浅中灰 */
+  color: #e2e8f0; /* 浅灰蓝 */
+}
+
+.dark .lang-select:focus,
+.dark .state-select:focus,
+.dark .refresh-interval-select:focus {
+  outline: none;
+  border-color: #4c6ef5; /* 深蓝色 */
+  box-shadow: 0 0 0 2px rgba(76, 110, 245, 0.3); /* 深蓝色透明阴影 */
+}
+
+.dark .refresh-interval-select:disabled {
+  background-color: #4a5568; /* 中灰蓝 */
+  color: #718096; /* 中灰 */
+  cursor: not-allowed;
+}
+
+/* 内核进程在暗色主题下的样式 - 深色版 */
+.dark .kernel-process {
+  color: #f8b4b4; /* 浅粉红 */
+  background-color: #8b2525; /* 深红棕 */
+}
+
+/* 暗色主题下的滚动条样式 */
+.dark ::-webkit-scrollbar {
+  width: 12px; /* 纵向滚动条宽度 */
+  height: 12px; /* 横向滚动条高度 */
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #1a202c; /* 与背景色一致 */
+  border-radius: 6px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #2d3748; /* 与菜单背景色相近但略深 */
+  border-radius: 6px;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #4a5568; /* 悬停时的颜色 */
+}
+
+/* 亮色主题下的滚动条样式 */
+::-webkit-scrollbar {
+  width: 12px; /* 纵向滚动条宽度 */
+  height: 12px; /* 横向滚动条高度 */
+}
+
+::-webkit-scrollbar-track {
+  background: #f3f4f6; /* 与亮色主题背景一致 */
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e0; /* 与亮色主题边框色相近 */
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a0aec0; /* 悬停时的颜色 */
 }
 </style>

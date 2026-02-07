@@ -15,6 +15,8 @@ interface TcpConnection {
   icon: string | null; // Base64 encoded icon data
   start_time: number | null; // Process start time in seconds since Unix epoch
   fill_column: string; // Fill column for filling remaining space
+  isNew?: boolean; // 标记是否为新连接
+  hasChanged?: boolean; // 标记连接是否有变化
 }
 
 // 定义进程详情类型
@@ -32,6 +34,11 @@ interface ProcessDetails {
 const connections = ref<TcpConnection[]>([]);
 const isLoading = ref(false);
 const refreshInterval = ref<number | null>(null);
+// 自动刷新相关状态
+const autoRefreshInterval = ref<number | null>(null);
+const isAutoRefreshEnabled = ref(false);
+const refreshIntervals = [1, 2, 3, 5, 10]; // 可选的刷新间隔（秒）
+const selectedRefreshInterval = ref(1); // 默认选择1秒
 
 // 右键菜单相关状态
 const showContextMenu = ref(false);
@@ -47,31 +54,13 @@ const processDetails = ref<ProcessDetails | null>(null);
 
 
 // 排序相关状态
-const sortColumn = ref<'process_name' | 'pid' | 'protocol' | 'local_addr' | 'local_port' | 'remote_addr' | 'remote_port' | 'state' | 'start_time' | 'fill_column' | null>(null);
+const sortColumn = ref<'process_name' | 'pid' | 'protocol' | 'local_addr' | 'local_port' | 'remote_addr' | 'remote_port' | 'state' | 'start_time' | null>(null);
 const sortDirection = ref<'asc' | 'desc'>('asc'); // 'asc' 升序, 'desc' 降序
 
-// 列宽状态
-const columnWidths = ref({
-  process_name: 180, // 缩减进程名称列宽度
-  pid: 80,          // 缩减PID列宽度
-  protocol: 60,     // 缩减协议列宽度
-  local_addr: 120,  // 缩减本地地址列宽度
-  local_port: 70,   // 缩减本地端口列宽度
-  remote_addr: 120, // 缩减远程地址列宽度
-  remote_port: 70,  // 缩减远程端口列宽度
-  state: 80,        // 缩减状态列宽度
-  start_time: 150,  // 启动时间列宽度
-  fill_column: 1    // 填充列，宽度设为1，剩余空间由flex-grow填充
-});
 
-// 计算Grid模板列
-const gridTemplateColumns = computed(() => {
-  return `${columnWidths.value.process_name}px ${columnWidths.value.pid}px ${columnWidths.value.protocol}px ${columnWidths.value.local_addr}px ${columnWidths.value.local_port}px ${columnWidths.value.remote_addr}px ${columnWidths.value.remote_port}px ${columnWidths.value.state}px ${columnWidths.value.start_time}px ${columnWidths.value.fill_column}px`;
-});
+// 存储用户自定义的列宽
+const customColumnWidths = ref<Record<string, number>>({});
 
-let resizingColumn = ref<string | null>(null);
-let startX = ref(0);
-let startWidth = ref(0);
 
 // 菜单栏筛选条件
 const filterProtocol = ref<'all' | 'TCP' | 'UDP'>('all');
@@ -85,6 +74,11 @@ const statusBarInfo = ref({
   tcpConnections: 0,
   udpConnections: 0,
   kernelConnections: 0,
+  establishedConnections: 0,
+  listenConnections: 0,
+  timeWaitConnections: 0,
+  closeWaitConnections: 0,
+  otherConnections: 0,
   lastUpdate: new Date().toLocaleTimeString(),
   refreshInterval: null as number | null
 });
@@ -95,6 +89,9 @@ async function loadConnections() {
   try {
     const result: TcpConnection[] = await invoke("get_connections");
 
+    // 保存当前连接列表的副本用于比较
+    const previousConnections = [...connections.value];
+    
     // 应用筛选条件
     let filteredResult = result;
 
@@ -124,6 +121,43 @@ async function loadConnections() {
       );
     }
 
+    // 标记状态变化的连接
+    filteredResult.forEach(conn => {
+      // 生成唯一标识符用于比较
+      const connId = `${conn.protocol}-${conn.local_addr}-${conn.local_port}-${conn.remote_addr}-${conn.remote_port}-${conn.pid || 'null'}`;
+      
+      // 查找匹配的旧连接
+      const matchingPrevConn = previousConnections.find(prevConn => {
+        const prevConnId = `${prevConn.protocol}-${prevConn.local_addr}-${prevConn.local_port}-${prevConn.remote_addr}-${prevConn.remote_port}-${prevConn.pid || 'null'}`;
+        return prevConnId === connId;
+      });
+      
+      // 如果找到了匹配的连接，检查状态是否发生了变化
+      if (matchingPrevConn) {
+        conn.hasChanged = matchingPrevConn.state !== conn.state;
+      } else {
+        // 如果没有找到匹配的连接，不标记任何状态
+        conn.hasChanged = false;
+      }
+    });
+    
+    // 检查是否有连接状态发生了变化
+    const changedConnections = filteredResult.filter(conn => conn.hasChanged);
+    if (changedConnections.length > 0) {
+      console.log(`检测到 ${changedConnections.length} 个连接状态发生变化:`, changedConnections.map(c => ({
+        protocol: c.protocol,
+        local_addr: c.local_addr,
+        local_port: c.local_port,
+        remote_addr: c.remote_addr,
+        remote_port: c.remote_port,
+        old_state: previousConnections.find(pc => 
+          `${pc.protocol}-${pc.local_addr}-${pc.local_port}-${pc.remote_addr}-${pc.remote_port}-${pc.pid || 'null'}` ===
+          `${c.protocol}-${c.local_addr}-${c.local_port}-${c.remote_addr}-${c.remote_port}-${c.pid || 'null'}`
+        )?.state,
+        new_state: c.state
+      })));
+    }
+
     connections.value = filteredResult;
 
     // 更新状态栏信息
@@ -131,6 +165,17 @@ async function loadConnections() {
 
     // 应用排序
     applySorting();
+
+    // 3秒后移除变化标记
+    setTimeout(() => {
+      connections.value = connections.value.map(conn => ({
+        ...conn,
+        hasChanged: false
+      }));
+    }, 3000);
+    
+    // 应用自定义列宽（在排序和标记处理之后）
+    applyCustomColumnWidths();
   } catch (error) {
     console.error("获取连接列表失败:", error);
     alert(`获取连接列表失败: ${error}`);
@@ -159,6 +204,19 @@ function updateStatusBarInfo(connections: TcpConnection[]) {
   statusBarInfo.value.kernelConnections = connections.filter(conn =>
     conn.process_name === '[KERNEL]' || (conn.process_name && conn.process_name.includes('[KERNEL]'))
   ).length;
+  
+  // 统计各种连接状态的数量
+  statusBarInfo.value.establishedConnections = connections.filter(conn => conn.state === 'ESTABLISHED').length;
+  statusBarInfo.value.listenConnections = connections.filter(conn => conn.state === 'LISTEN').length;
+  statusBarInfo.value.timeWaitConnections = connections.filter(conn => conn.state === 'TIME_WAIT').length;
+  statusBarInfo.value.closeWaitConnections = connections.filter(conn => conn.state === 'CLOSE_WAIT').length;
+  statusBarInfo.value.otherConnections = connections.filter(conn => 
+    conn.state !== 'ESTABLISHED' && 
+    conn.state !== 'LISTEN' && 
+    conn.state !== 'TIME_WAIT' && 
+    conn.state !== 'CLOSE_WAIT'
+  ).length;
+  
   statusBarInfo.value.lastUpdate = new Date().toLocaleTimeString();
 }
 
@@ -303,9 +361,6 @@ function applySorting() {
         return sortDirection.value === 'asc'
           ? valueA - valueB
           : valueB - valueA;
-      case 'fill_column':
-        // 填充列不参与实际排序，总是返回0
-        return 0;
       default:
         return 0;
     }
@@ -313,7 +368,7 @@ function applySorting() {
 }
 
 // 切换列排序
-async function toggleSort(column: 'process_name' | 'pid' | 'protocol' | 'local_addr' | 'local_port' | 'remote_addr' | 'remote_port' | 'state' | 'start_time' | 'fill_column') {
+async function toggleSort(column: 'process_name' | 'pid' | 'protocol' | 'local_addr' | 'local_port' | 'remote_addr' | 'remote_port' | 'state' | 'start_time') {
   // 在排序前重新获取最新连接数据
   await loadConnections();
 
@@ -331,109 +386,301 @@ async function toggleSort(column: 'process_name' | 'pid' | 'protocol' | 'local_a
 }
 
 
+// 列宽拖拽相关变量
+let isDragging = false;
+let dragStartX = 0;
+let dragStartWidth = 0;
+let currentColumnIndex = -1;
+let initialColumnWidths: number[] = [];
+let initialTableWidth = 0;
 
-// 通用的鼠标按下处理函数
-function handleMouseDown(event: MouseEvent) {
-  // 只响应左键点击
-  if (event.button !== 0) return;
+// 开始拖拽列宽
+function startColumnResize(event: MouseEvent, columnIndex: number) {
+  // 检查是否在右边框区域（10像素范围内）
+  const thElement = event.target as HTMLElement;
+  const rect = thElement.getBoundingClientRect();
+  const rightEdgeThreshold = 10; // 10像素的边框区域（包括margin）
+  
+  // 计算鼠标相对于元素右边的距离
+  const distanceFromRight = rect.right - event.clientX;
+  
+  // 只有当鼠标在右边框区域内才允许拖拽
+  if (distanceFromRight > rightEdgeThreshold) {
+    return; // 不在边框区域，不执行拖拽
+  }
 
-  // 获取被点击的列的data-column属性
-  const target = event.target as HTMLElement;
-  const th = target.closest('th') as HTMLElement;
-  if (!th) return;
+  isDragging = true;
+  dragStartX = event.clientX;
+  currentColumnIndex = columnIndex;
 
-  const columnName = th.getAttribute('data-column') as keyof typeof columnWidths.value;
-  if (!columnName) return;
+  // 获取当前列的宽度
+  dragStartWidth = thElement.offsetWidth;
 
-  startResize(columnName, event);
-}
+  // 获取所有列的初始宽度
+  const thElements = document.querySelectorAll('.connections-table th');
+  initialColumnWidths = [];
+  thElements.forEach(th => {
+    initialColumnWidths.push((th as HTMLElement).offsetWidth);
+  });
 
-// 开始调整列宽
-function startResize(columnName: keyof typeof columnWidths.value, event: MouseEvent) {
-  resizingColumn.value = columnName;
-  startX.value = event.clientX;
-  startWidth.value = columnWidths.value[columnName];
+  // 获取表格的初始宽度
+  const table = document.querySelector('.connections-table') as HTMLElement;
+  if (table) {
+    initialTableWidth = table.offsetWidth;
+  }
 
-  // 添加resizing类到整个表格以提供视觉反馈
-  const table = document.querySelector('.connections-table');
+  // 添加resizing类到表格
   if (table) {
     table.classList.add('resizing');
   }
 
-  const handleMouseMove = (e: MouseEvent) => handleResize(e);
-  const handleMouseUp = (_e: MouseEvent) => stopResize(table);
+  // 添加current-resizing类到当前列
+  thElement.classList.add('current-resizing');
 
-  document.addEventListener('mousemove', handleMouseMove);
-  document.addEventListener('mouseup', handleMouseUp);
+  // 添加鼠标移动和释放事件监听器
+  document.addEventListener('mousemove', handleColumnResize);
+  document.addEventListener('mouseup', stopColumnResize);
 
-  // 防止文本选择和默认的拖拽行为
+  // 阻止默认行为，防止选中文本
   event.preventDefault();
-
-  // 确保在鼠标抬起时移除事件监听器
-  const cleanup = () => {
-    document.removeEventListener('mousemove', handleMouseMove);
-    document.removeEventListener('mouseup', handleMouseUp);
-    document.removeEventListener('mouseleave', cleanup);
-  };
-
-  document.addEventListener('mouseleave', cleanup);
 }
 
-// 调整列宽
-function handleResize(event: MouseEvent) {
-  if (resizingColumn.value) {
-    const diff = event.clientX - startX.value;
-    // 根据不同列设置不同的最小宽度，以避免文字重叠
-    let minWidth = 40; // 默认最小宽度
-    switch(resizingColumn.value) {
-      case 'process_name':
-        minWidth = 100; // 进程名称需要更多空间（包含图标）
-        break;
-      case 'local_addr':
-      case 'remote_addr':
-        minWidth = 100; // IP地址需要更多空间
-        break;
-      case 'state':
-        minWidth = 60; // 状态也需要一定空间
-        break;
-      case 'protocol':
-        minWidth = 50; // 协议列最小宽度
-        break;
-      case 'pid':
-        minWidth = 50; // PID列最小宽度
-        break;
-      case 'local_port':
-      case 'remote_port':
-        minWidth = 50; // 端口列最小宽度
-        break;
-      case 'start_time':
-        minWidth = 120; // 启动时间列最小宽度
-        break;
-      case 'fill_column':
-        minWidth = 1; // 填充列最小宽度
-        break;
-      default:
-        minWidth = 40; // 其他列的最小宽度
+// 处理列宽调整
+function handleColumnResize(event: MouseEvent) {
+  if (!isDragging) return;
+
+  const deltaX = event.clientX - dragStartX;
+  const newWidth = Math.max(dragStartWidth + deltaX, 50); // 最小宽度50px
+
+  // 获取所有表头元素
+  const thElements = document.querySelectorAll('.connections-table th');
+  if (thElements[currentColumnIndex]) {
+    const th = thElements[currentColumnIndex] as HTMLElement;
+
+    // 设置新的宽度
+    th.style.width = `${newWidth}px`;
+    th.style.maxWidth = `${newWidth}px`;
+    th.style.minWidth = `${newWidth}px`;
+
+    th.style.setProperty('width', `${newWidth}px`, 'important');
+    th.style.setProperty('max-width', `${newWidth}px`, 'important');
+    th.style.setProperty('min-width', `${newWidth}px`, 'important');
+
+    // 同时设置对应列的td元素以确保列宽一致
+    const tdElements = document.querySelectorAll(`.connections-table td:nth-child(${currentColumnIndex + 1})`);
+    tdElements.forEach(td => {
+      const tdElement = td as HTMLElement;
+      tdElement.style.width = `${newWidth}px`;
+      tdElement.style.maxWidth = `${newWidth}px`;
+      tdElement.style.minWidth = `${newWidth}px`;
+
+      tdElement.style.setProperty('width', `${newWidth}px`, 'important');
+      tdElement.style.setProperty('max-width', `${newWidth}px`, 'important');
+      tdElement.style.setProperty('min-width', `${newWidth}px`, 'important');
+    });
+
+    // 更新自定义列宽存储
+    const columnOrder: (keyof TcpConnection)[] = [
+      'process_name', 'pid', 'protocol', 'local_addr', 'local_port',
+      'remote_addr', 'remote_port', 'state', 'start_time'
+    ];
+    if (columnOrder[currentColumnIndex]) {
+      customColumnWidths.value[columnOrder[currentColumnIndex]] = newWidth;
     }
-
-    const newWidth = Math.max(startWidth.value + diff, minWidth);
-
-    // 更新当前列的宽度
-    columnWidths.value[resizingColumn.value as keyof typeof columnWidths.value] = newWidth;
   }
 }
 
-// 停止调整列宽
-function stopResize(table: Element | null) {
-  resizingColumn.value = null;
+// 结束列宽调整
+function stopColumnResize() {
+  isDragging = false;
 
   // 移除resizing类
+  const table = document.querySelector('.connections-table') as HTMLElement;
   if (table) {
     table.classList.remove('resizing');
   }
 
-  // 触发一次重绘以确保布局正确
-  document.body.offsetHeight;
+  // 移除current-resizing类
+  const thElements = document.querySelectorAll('.connections-table th');
+  thElements.forEach(th => {
+    th.classList.remove('current-resizing');
+  });
+
+  // 恢复鼠标指针样式
+  thElements.forEach(th => {
+    (th as HTMLElement).style.cursor = '';
+  });
+
+  // 移除事件监听器
+  document.removeEventListener('mousemove', handleColumnResize);
+  document.removeEventListener('mouseup', stopColumnResize);
+}
+
+
+
+// 获取表头文本
+function getHeaderText(column: keyof TcpConnection): string {
+  const headers: Record<string, string> = {
+    'process_name': '进程名称',
+    'pid': 'PID',
+    'protocol': '协议',
+    'local_addr': '本地地址',
+    'local_port': '本地端口',
+    'remote_addr': '远程地址',
+    'remote_port': '远程端口',
+    'state': '状态',
+    'start_time': '启动时间'
+  };
+  return headers[column] || column;
+}
+
+
+
+// 应用自定义列宽到DOM
+function applyCustomColumnWidths() {
+  // 使用 setTimeout 确保在 DOM 更新后执行
+  setTimeout(() => {
+    const thElements = document.querySelectorAll('.connections-table th');
+    const columnOrder: (keyof TcpConnection)[] = [
+      'process_name', 'pid', 'protocol', 'local_addr', 'local_port',
+      'remote_addr', 'remote_port', 'state', 'start_time'
+    ];
+
+    columnOrder.forEach((col, index) => {
+      if (thElements[index]) {
+        const th = thElements[index] as HTMLElement;
+        let colWidth;
+
+        if (customColumnWidths.value[col]) {
+          // 使用自定义宽度
+          colWidth = customColumnWidths.value[col];
+        } else {
+          // 使用默认宽度
+          switch(col) {
+            case 'process_name':
+              colWidth = 150; // 进程名称列较宽
+              break;
+            case 'pid':
+              colWidth = 80; // PID列较窄
+              break;
+            case 'protocol':
+              colWidth = 60; // 协议列较窄
+              break;
+            case 'local_addr':
+              colWidth = 120; // 本地地址列中等
+              break;
+            case 'local_port':
+              colWidth = 80; // 本地端口列较窄
+              break;
+            case 'remote_addr':
+              colWidth = 120; // 远程地址列中等
+              break;
+            case 'remote_port':
+              colWidth = 80; // 远程端口列较窄
+              break;
+            case 'state':
+              colWidth = 100; // 状态列中等
+              break;
+            case 'start_time':
+              colWidth = 150; // 启动时间列较宽
+              break;
+            default:
+              colWidth = 100; // 默认宽度
+          }
+        }
+
+        // 设置列宽并使用 !important 确保优先级
+        th.style.width = `${colWidth}px`;
+        th.style.maxWidth = `${colWidth}px`;
+        th.style.minWidth = `${colWidth}px`;
+
+        th.style.setProperty('width', `${colWidth}px`, 'important');
+        th.style.setProperty('max-width', `${colWidth}px`, 'important');
+        th.style.setProperty('min-width', `${colWidth}px`, 'important');
+
+        // 同时设置td元素以确保列宽一致
+        const tdElements = document.querySelectorAll(`.connections-table td:nth-child(${index + 1})`);
+        tdElements.forEach(td => {
+          const tdElement = td as HTMLElement;
+          tdElement.style.width = `${colWidth}px`;
+          tdElement.style.maxWidth = `${colWidth}px`;
+          tdElement.style.minWidth = `${colWidth}px`;
+
+          tdElement.style.setProperty('width', `${colWidth}px`, 'important');
+          tdElement.style.setProperty('max-width', `${colWidth}px`, 'important');
+          tdElement.style.setProperty('min-width', `${colWidth}px`, 'important');
+        });
+      }
+    });
+
+    // 确保表格使用固定布局
+    const table = document.querySelector('.connections-table') as HTMLElement;
+    if (table) {
+      table.style.tableLayout = 'fixed';
+    }
+    
+    // 设置冗余列填充剩余空间
+    const fillerColumns = document.querySelectorAll('.connections-table th.filler-column, .connections-table td.filler-cell');
+    fillerColumns.forEach(filler => {
+      const fillerElement = filler as HTMLElement;
+      fillerElement.style.width = '100%';
+      fillerElement.style.minWidth = '0';
+      fillerElement.style.maxWidth = 'none';
+    });
+  }, 0);
+}
+
+
+
+
+// 启用自动刷新
+function enableAutoRefresh() {
+  if (autoRefreshInterval.value !== null) {
+    clearInterval(autoRefreshInterval.value);
+  }
+  
+  isAutoRefreshEnabled.value = true;
+  autoRefreshInterval.value = window.setInterval(() => {
+    loadConnections();
+  }, selectedRefreshInterval.value * 1000); // 转换为毫秒
+  
+  // 更新状态栏信息
+  statusBarInfo.value.refreshInterval = selectedRefreshInterval.value;
+}
+
+// 禁用自动刷新
+function disableAutoRefresh() {
+  if (autoRefreshInterval.value !== null) {
+    clearInterval(autoRefreshInterval.value);
+    autoRefreshInterval.value = null;
+  }
+  
+  isAutoRefreshEnabled.value = false;
+  statusBarInfo.value.refreshInterval = null;
+}
+
+// 切换自动刷新
+function toggleAutoRefresh() {
+  if (isAutoRefreshEnabled.value) {
+    disableAutoRefresh();
+  } else {
+    enableAutoRefresh();
+  }
+}
+
+// 更改刷新间隔
+function changeRefreshInterval(interval: number) {
+  selectedRefreshInterval.value = interval;
+  
+  // 如果自动刷新已启用，重新设置间隔
+  if (isAutoRefreshEnabled.value) {
+    enableAutoRefresh();
+  }
+  
+  // 更新状态栏信息
+  if (isAutoRefreshEnabled.value) {
+    statusBarInfo.value.refreshInterval = selectedRefreshInterval.value;
+  }
 }
 
 // 页面加载完成后自动获取连接列表
@@ -453,22 +700,28 @@ onUnmounted(() => {
     clearInterval(refreshInterval.value);
   }
 
+  // 清除自动刷新定时器
+  if (autoRefreshInterval.value !== null) {
+    clearInterval(autoRefreshInterval.value);
+  }
+
   // 移除窗口大小变化事件监听器
   window.removeEventListener('resize', handleWindowResize);
 
   // 移除文档点击事件监听器
   document.removeEventListener('click', hideContextMenu);
+  
+  // 确保移除可能存在的列宽调整事件监听器
+  document.removeEventListener('mousemove', handleColumnResize);
+  document.removeEventListener('mouseup', stopColumnResize);
 });
 
 // 处理窗口大小变化
 function handleWindowResize() {
-  // 在窗口大小变化时，重新应用当前的列宽设置
+  // 在窗口大小变化时，仅做一些基本的布局更新
   setTimeout(() => {
     // 强制浏览器重新计算布局
     document.body.offsetHeight;
-
-    // 根据窗口大小调整表格行为
-    adjustTableBehavior();
   }, 150); // 增加延时以确保窗口大小变化完全结束
 }
 
@@ -516,45 +769,35 @@ function isKernelProcess(processName: string | null): boolean {
   return processName === '[KERNEL]' || (processName !== null && processName.includes('[KERNEL]'));
 }
 
-// 根据窗口大小调整表格行为
-function adjustTableBehavior() {
-  const tableWrapper = document.querySelector('.table-wrapper') as HTMLElement;
-
-  if (tableWrapper) {
-    // 无论窗口大小，都让表格填充可用空间
-    tableWrapper.style.width = '100%';
-    tableWrapper.style.display = 'block';
-  }
-}
 </script>
 
 <template>
   <div class="container">
     <!-- 菜单栏 -->
     <div class="menu-bar">
-      <div class="menu-group">
-        <label class="menu-label">协议:</label>
-        <div class="protocol-buttons">
-          <button
-            :class="['protocol-btn', { active: filterProtocol === 'all' }]"
-            @click="setProtocolFilter('all')"
-          >
-            全部
-          </button>
-          <button
-            :class="['protocol-btn', { active: filterProtocol === 'TCP' }]"
-            @click="setProtocolFilter('TCP')"
-          >
-            TCP
-          </button>
-          <button
-            :class="['protocol-btn', { active: filterProtocol === 'UDP' }]"
-            @click="setProtocolFilter('UDP')"
-          >
-            UDP
-          </button>
+        <div class="menu-group">
+          <label class="menu-label">协议:</label>
+          <div class="protocol-buttons">
+            <button
+              :class="['protocol-btn', { active: filterProtocol === 'all' }]"
+              @click="setProtocolFilter('all')"
+            >
+              全部
+            </button>
+            <button
+              :class="['protocol-btn', { active: filterProtocol === 'TCP' }]"
+              @click="setProtocolFilter('TCP')"
+            >
+              TCP
+            </button>
+            <button
+              :class="['protocol-btn', { active: filterProtocol === 'UDP' }]"
+              @click="setProtocolFilter('UDP')"
+            >
+              UDP
+            </button>
+          </div>
         </div>
-      </div>
 
       <div class="menu-group">
         <label class="menu-label">状态:</label>
@@ -578,7 +821,7 @@ function adjustTableBehavior() {
         </select>
       </div>
 
-      <div class="menu-group">
+      <div class="menu-group search-group">
         <label class="menu-label">搜索进程:</label>
         <input
           type="text"
@@ -589,7 +832,7 @@ function adjustTableBehavior() {
         />
       </div>
 
-      <div class="menu-group">
+      <div class="menu-group search-group">
         <label class="menu-label">本地地址:</label>
         <input
           type="text"
@@ -599,6 +842,28 @@ function adjustTableBehavior() {
           class="menu-search"
         />
       </div>
+      
+      <div class="menu-group">
+        <label class="menu-label">自动刷新:</label>
+        <div class="refresh-controls">
+          <button
+            :class="['refresh-toggle-btn', { active: isAutoRefreshEnabled }]"
+            @click="toggleAutoRefresh"
+          >
+            {{ isAutoRefreshEnabled ? '停止' : '开始' }}
+          </button>
+          <select
+            v-model="selectedRefreshInterval"
+            @change="changeRefreshInterval(selectedRefreshInterval)"
+            class="refresh-interval-select"
+            :disabled="!isAutoRefreshEnabled"
+          >
+            <option v-for="interval in refreshIntervals" :key="interval" :value="interval">
+              {{ interval }}秒
+            </option>
+          </select>
+        </div>
+      </div>
     </div>
 
     <div class="connections-table-container">
@@ -606,7 +871,7 @@ function adjustTableBehavior() {
         <table class="connections-table">
           <thead>
             <tr>
-              <th :style="{ width: columnWidths.process_name + 'px', minWidth: columnWidths.process_name + 'px' }" class="resizable-th" data-column="process_name" @mousedown.left="handleMouseDown">
+              <th class="resizable-th" @mousedown="startColumnResize($event, 0)">
                 <div class="column-header" @click="toggleSort('process_name')">
                   <span class="sortable-header">
                     进程名称
@@ -616,7 +881,7 @@ function adjustTableBehavior() {
                   </span>
                 </div>
               </th>
-              <th :style="{ width: columnWidths.pid + 'px', minWidth: columnWidths.pid + 'px' }" class="resizable-th" data-column="pid" @mousedown.left="handleMouseDown">
+              <th class="resizable-th" @mousedown="startColumnResize($event, 1)">
                 <div class="column-header" @click="toggleSort('pid')">
                   <span class="sortable-header">
                     PID
@@ -626,7 +891,7 @@ function adjustTableBehavior() {
                   </span>
                 </div>
               </th>
-              <th :style="{ width: columnWidths.protocol + 'px', minWidth: columnWidths.protocol + 'px' }" class="resizable-th" data-column="protocol" @mousedown.left="handleMouseDown">
+              <th class="resizable-th" @mousedown="startColumnResize($event, 2)">
                 <div class="column-header" @click="toggleSort('protocol')">
                   <span class="sortable-header">
                     协议
@@ -636,7 +901,7 @@ function adjustTableBehavior() {
                   </span>
                 </div>
               </th>
-              <th :style="{ width: columnWidths.local_addr + 'px', minWidth: columnWidths.local_addr + 'px' }" class="resizable-th" data-column="local_addr" @mousedown.left="handleMouseDown">
+              <th class="resizable-th" @mousedown="startColumnResize($event, 3)">
                 <div class="column-header" @click="toggleSort('local_addr')">
                   <span class="sortable-header">
                     本地地址
@@ -646,7 +911,7 @@ function adjustTableBehavior() {
                   </span>
                 </div>
               </th>
-              <th :style="{ width: columnWidths.local_port + 'px', minWidth: columnWidths.local_port + 'px' }" class="resizable-th" data-column="local_port" @mousedown.left="handleMouseDown">
+              <th class="resizable-th" @mousedown="startColumnResize($event, 4)">
                 <div class="column-header" @click="toggleSort('local_port')">
                   <span class="sortable-header">
                     本地端口
@@ -656,7 +921,7 @@ function adjustTableBehavior() {
                   </span>
                 </div>
               </th>
-              <th :style="{ width: columnWidths.remote_addr + 'px', minWidth: columnWidths.remote_addr + 'px' }" class="resizable-th" data-column="remote_addr" @mousedown.left="handleMouseDown">
+              <th class="resizable-th" @mousedown="startColumnResize($event, 5)">
                 <div class="column-header" @click="toggleSort('remote_addr')">
                   <span class="sortable-header">
                     远程地址
@@ -666,7 +931,7 @@ function adjustTableBehavior() {
                   </span>
                 </div>
               </th>
-              <th :style="{ width: columnWidths.remote_port + 'px', minWidth: columnWidths.remote_port + 'px' }" class="resizable-th" data-column="remote_port" @mousedown.left="handleMouseDown">
+              <th class="resizable-th" @mousedown="startColumnResize($event, 6)">
                 <div class="column-header" @click="toggleSort('remote_port')">
                   <span class="sortable-header">
                     远程端口
@@ -676,7 +941,7 @@ function adjustTableBehavior() {
                   </span>
                 </div>
               </th>
-              <th :style="{ width: columnWidths.state + 'px', minWidth: columnWidths.state + 'px' }" class="resizable-th" data-column="state" @mousedown.left="handleMouseDown">
+              <th class="resizable-th" @mousedown="startColumnResize($event, 7)">
                 <div class="column-header" @click="toggleSort('state')">
                   <span class="sortable-header">
                     状态
@@ -686,7 +951,7 @@ function adjustTableBehavior() {
                   </span>
                 </div>
               </th>
-              <th :style="{ width: columnWidths.start_time + 'px', minWidth: columnWidths.start_time + 'px' }" class="resizable-th" data-column="start_time" @mousedown.left="handleMouseDown">
+              <th class="resizable-th" @mousedown="startColumnResize($event, 8)">
                 <div class="column-header" @click="toggleSort('start_time')">
                   <span class="sortable-header">
                     启动时间
@@ -696,12 +961,8 @@ function adjustTableBehavior() {
                   </span>
                 </div>
               </th>
-              <th :style="{ width: columnWidths.fill_column + 'px', minWidth: columnWidths.fill_column + 'px' }" class="resizable-th" data-column="fill_column" @mousedown.left="handleMouseDown" style="flex-grow: 1;">
-                <div class="column-header">
-                  <span class="sortable-header">
-                    <!-- 空白列标题，用于填充剩余空间 -->
-                  </span>
-                </div>
+              <th class="filler-column">
+                <!-- 冗余列，用于填充剩余空间 -->
               </th>
             </tr>
           </thead>
@@ -712,23 +973,26 @@ function adjustTableBehavior() {
               @contextmenu="showContextMenuHandler(conn, $event)"
               @click="clickedConnection = conn"
               @dblclick="showProcessDetailsDialog(conn)"
-              :class="{ 'selected-row': clickedConnection === conn }"
+              :class="{
+                'selected-row': clickedConnection === conn,
+                'changed-connection': conn.hasChanged
+              }"
             >
-              <td :style="{ width: columnWidths.process_name + 'px' }" class="process-name-cell">
+              <td class="process-name-cell">
                 <div class="process-with-icon">
                   <img v-if="conn.icon && !isKernelProcess(conn.process_name)" :src="'data:image/png;base64,' + conn.icon" :alt="conn.process_name || 'Process Icon'" class="process-icon" />
                   <span :class="{ 'kernel-process': isKernelProcess(conn.process_name) }">{{ conn.process_name || '-' }}</span>
                 </div>
               </td>
-              <td :style="{ width: columnWidths.pid + 'px' }">{{ conn.pid || '-' }}</td>
-              <td :style="{ width: columnWidths.protocol + 'px' }">{{ conn.protocol }}</td>
-              <td :style="{ width: columnWidths.local_addr + 'px' }">{{ conn.local_addr }}</td>
-              <td :style="{ width: columnWidths.local_port + 'px' }">{{ conn.local_port }}</td>
-              <td :style="{ width: columnWidths.remote_addr + 'px' }">{{ conn.remote_addr }}</td>
-              <td :style="{ width: columnWidths.remote_port + 'px' }">{{ conn.remote_port }}</td>
-              <td :style="{ width: columnWidths.state + 'px' }">{{ conn.state }}</td>
-              <td :style="{ width: columnWidths.start_time + 'px' }">{{ formatDate(conn.start_time) }}</td>
-              <td :style="{ width: columnWidths.fill_column + 'px' }" style="flex-grow: 1;"></td>
+              <td>{{ conn.pid || '-' }}</td>
+              <td>{{ conn.protocol }}</td>
+              <td>{{ conn.local_addr }}</td>
+              <td>{{ conn.local_port }}</td>
+              <td>{{ conn.remote_addr }}</td>
+              <td>{{ conn.remote_port }}</td>
+              <td>{{ conn.state }}</td>
+              <td>{{ formatDate(conn.start_time) }}</td>
+              <td class="filler-cell"></td>
             </tr>
           </tbody>
         </table>
@@ -760,6 +1024,26 @@ function adjustTableBehavior() {
       <div class="status-item">
         <span class="status-label">UDP连接:</span>
         <span class="status-value udp-count">{{ statusBarInfo.udpConnections }}</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">已建立:</span>
+        <span class="status-value established-count">{{ statusBarInfo.establishedConnections }}</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">监听:</span>
+        <span class="status-value listen-count">{{ statusBarInfo.listenConnections }}</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">等待:</span>
+        <span class="status-value wait-count">{{ statusBarInfo.timeWaitConnections }}</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">关闭等待:</span>
+        <span class="status-value close-wait-count">{{ statusBarInfo.closeWaitConnections }}</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">其他状态:</span>
+        <span class="status-value other-count">{{ statusBarInfo.otherConnections }}</span>
       </div>
       <div class="status-item">
         <span class="status-label">内核连接:</span>
@@ -801,57 +1085,7 @@ function adjustTableBehavior() {
 .connections-table-container {
   width: 100%;
   overflow-x: auto;  /* 当内容超出宽度时显示横向滚动条 */
-  overflow-y: auto;
-  flex: 1 1 auto;   /* 允许增长、收缩，基础大小为自动 */
-  margin-top: 0;
-  min-height: 0;    /* 允许容器收缩 */
-  display: flex;
-  flex-direction: column;
-}
-
-.table-grid-wrapper {
-  width: 100%;     /* 填满容器宽度 */
-  display: flex;
-  flex-direction: column;
-  overflow-x: auto; /* 确保水平滚动可用 */
-}
-
-.grid-header,
-.grid-data-row {
-  display: grid;
-  grid-template-columns: v-bind(gridTemplateColumns); /* 使用动态Grid模板 */
-  min-width: max-content; /* 确保网格至少适应内容宽度 */
-}
-
-.grid-header {
-  background-color: #f9fafb;
-  color: #111827;
-  text-align: left;
-  font-weight: 600;
-  border-bottom: 2px solid #e5e7eb;
-  height: 24px;
-  flex-shrink: 0; /* 防止头部收缩 */
-}
-
-.grid-header-cell,
-.grid-data-cell {
-  padding: 2px 6px;
-  text-align: left;
-  border-bottom: 1px solid #e5e7eb;
-  color: #111827;
-  line-height: 1.2;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  overflow: hidden; /* 防止内容溢出 */
-  white-space: nowrap; /* 防止文本换行 */
-  box-sizing: border-box; /* 确保padding和border包含在元素宽度内 */
-}
-
-.connections-table-container {
-  width: 100%;
-  overflow-x: auto;  /* 当内容超出宽度时显示横向滚动条 */
-  overflow-y: auto;
+  overflow-y: auto;  /* 当内容超出高度时显示纵向滚动条 */
   flex: 1 1 auto;   /* 允许增长、收缩，基础大小为自动 */
   margin-top: 0;
   min-height: 0;    /* 允许容器收缩 */
@@ -861,21 +1095,26 @@ function adjustTableBehavior() {
 
 .table-wrapper {
   width: 100%;
-  min-width: fit-content;  /* 使表格宽度适应内容 */
-  display: inline-block;   /* 使表格可以超出父容器 */
+  display: block;
+  flex: 1;                /* 让表格填充可用空间 */
+  min-height: 0;          /* 允许内容收缩 */
+  overflow-y: auto;       /* 垂直滚动 */
+  min-width: max-content; /* 确保表格至少适应内容宽度 */
+  overflow-x: auto;       /* 水平滚动，允许表格不完全填充容器 */
 }
 
 .connections-table {
-  width: 100%;  /* 改为100%宽度，以填充容器 */
+  width: fit-content;  /* 根据内容调整宽度 */
+  min-width: fit-content;  /* 不强制占满容器宽度 */
   border-collapse: collapse;
   font-size: 0.85em;  /* 略微减小字体以适应紧凑设计 */
-  min-width: 850px;  /* 调整最小宽度以适应更紧凑的列和新增的启动时间列 */
   border: none;
   border-radius: 0;
-  overflow: hidden;
-  height: 100%;
-  table-layout: auto;  /* 使用auto布局以实现表格宽度随内容变化 */
+  table-layout: fixed;  /* 使用fixed布局以精确控制列宽 */
   flex-shrink: 0;  /* 防止表格被压缩 */
+  margin-bottom: 0; /* 确保表格紧贴容器底部 */
+  display: table;   /* 使用表格显示 */
+  max-width: 100%;  /* 限制表格最大宽度不超过容器 */
 }
 
 .connections-table thead tr {
@@ -885,21 +1124,36 @@ function adjustTableBehavior() {
   font-weight: 600;
   border-bottom: 2px solid #e5e7eb;
   height: 24px;
+  position: sticky;      /* 固定表头 */
+  top: 0;               /* 固定在顶部 */
+  z-index: 10;          /* 确保表头在内容之上 */
+  display: table-row;    /* 确保sticky在表格行上正确工作 */
+}
+
+.connections-table tbody {
+  display: table-row-group; /* 确保tbody正确显示 */
 }
 
 .connections-table th,
 .connections-table td {
-  padding: 2px 6px;
+  padding: 2px 3px;  /* 左右padding 3px */
   text-align: left;
   border-bottom: 1px solid #e5e7eb;
   color: #111827;
   line-height: 1.2;
   height: 24px;
   vertical-align: middle;
+  white-space: nowrap; /* 防止文本换行 */
+  overflow: hidden; /* 防止内容溢出 */
+  word-break: keep-all; /* 防止单词内断行 */
 }
 
 .connections-table th {
-  white-space: nowrap; /* 防止表头文字换行 */
+  min-width: max-content; /* 表头列宽自适应内容 */
+}
+
+.connections-table td {
+  min-width: max-content; /* 数据列宽自适应内容 */
 }
 
 .connections-table tbody tr:nth-of-type(even) {
@@ -923,10 +1177,70 @@ function adjustTableBehavior() {
   color: white !important; /* 白色文字以提高对比度 */
 }
 
+/* 状态变化的连接项样式 */
+.connections-table tbody tr.changed-connection {
+  background-color: #fbbf24 !important; /* 琥珀色背景表示状态变化 */
+  transition: background-color 3s ease; /* 3秒过渡效果 */
+}
+
+.connections-table tbody tr.changed-connection td,
+.connections-table tbody tr.changed-connection th {
+  color: #78350f !important; /* 深琥珀色文字 */
+}
+
 /* 为除了最后一列之外的所有列添加右边框作为分割线 */
 .connections-table th:not(:last-child),
 .connections-table td:not(:last-child) {
   border-right: 1px solid #d1d5db;
+}
+
+/* 冗余列样式 - 填充剩余空间 */
+.filler-column {
+  width: 100%; /* 填充剩余空间 */
+  min-width: 0; /* 允许缩小到内容宽度 */
+  max-width: none; /* 不限制最大宽度 */
+  border: none; /* 不显示边框 */
+}
+
+.filler-cell {
+  width: 100%; /* 填充剩余空间 */
+  min-width: 0; /* 允许缩小到内容宽度 */
+  max-width: none; /* 不限制最大宽度 */
+  border: none; /* 不显示边框 */
+}
+
+.grid-data-cell:last-child {
+  border-right: none; /* 最后一列不需要右边框 */
+}
+
+.grid-data-row:nth-of-type(even) {
+  background-color: #f8fafc;
+}
+
+.grid-data-row:nth-of-type(odd) {
+  background-color: #ffffff;
+}
+
+.grid-data-row:hover {
+  background-color: #f1f5f9;
+}
+
+.grid-data-row.selected-row {
+  background-color: #3b82f6 !important; /* 蓝色背景 */
+}
+
+.grid-data-row.selected-row .grid-data-cell {
+  color: white !important; /* 白色文字以提高对比度 */
+}
+
+/* 状态变化的连接项样式 */
+.grid-data-row.changed-connection {
+  background-color: #fbbf24 !important; /* 琥珀色背景表示状态变化 */
+  transition: background-color 3s ease; /* 3秒过渡效果 */
+}
+
+.grid-data-row.changed-connection .grid-data-cell {
+  color: #78350f !important; /* 深琥珀色文字 */
 }
 
 .column-header {
@@ -939,32 +1253,37 @@ function adjustTableBehavior() {
 /* 为可调整大小的列添加调整手柄 */
 .resizable-th {
   position: relative;
+  cursor: default; /* 默认情况下光标为默认样式 */
 }
 
-/* 创建一个透明的拖动区域，覆盖列的右边缘 */
+/* 添加拖动区域 */
 .resizable-th::after {
   content: '';
   position: absolute;
+  right: 0;
   top: 0;
-  right: -4px;  /* 调整位置，使拖动区域与边框重合 */
-  width: 8px;  /* 拖动区域的总宽度 */
-  height: 100%;
-  background-color: transparent;
+  bottom: 0;
+  width: 10px; /* 拖动区域宽度，增加可点击区域 */
   cursor: col-resize;
-  z-index: 20;  /* 提高z-index确保在最顶层 */
-  pointer-events: auto;  /* 确保接收鼠标事件 */
+  background: transparent;
+  z-index: 10;
+  margin-right: -5px; /* 扩大可点击区域 */
 }
 
-/* 当正在调整大小时，显示更明显的视觉反馈 */
-.connections-table.resizing::after {
-  background-color: #3b82f6;
+.resizable-th::after:hover {
+  background: #94a3b8; /* 悬停时显示灰色线条 */
   opacity: 0.7;
 }
 
+/* 当正在调整大小时，显示更明显的视觉反馈 */
+.connections-table.resizing {
+  user-select: none; /* 防止在拖拽过程中选中文本 */
+}
+
 /* 为调整手柄添加激活状态 */
-.resizing {
-  background-color: #3b82f6;
-  opacity: 0.7 !important;
+.connections-table.resizing .resizable-th.current-resizing::after {
+  background: #3b82f6; /* 调整大小时显示蓝色线条 */
+  opacity: 0.8;
 }
 
 .sortable-header {
@@ -981,6 +1300,11 @@ function adjustTableBehavior() {
   color: #6b7280;
 }
 
+/* 确保表格容器有相对定位以便sticky定位正常工作 */
+.table-wrapper {
+  position: relative;
+}
+
 /* 进程名称单元格样式 */
 .process-name-cell {
   padding: 0 10px !important;
@@ -989,7 +1313,7 @@ function adjustTableBehavior() {
 .process-with-icon {
   display: flex;
   align-items: center;
-  gap: 8px; /* 图标与文本之间的间距 */
+  gap: 3px; /* 图标与文本之间的间距 */
 }
 
 .process-icon {
@@ -1005,6 +1329,21 @@ function adjustTableBehavior() {
   border-right: 1px solid #d1d5db;
 }
 
+/* 冗余列样式 - 填充剩余空间 */
+.filler-column {
+  width: 100%; /* 填充剩余空间 */
+  min-width: 0; /* 允许缩小到内容宽度 */
+  max-width: none; /* 不限制最大宽度 */
+  border: none; /* 不显示边框 */
+}
+
+.filler-cell {
+  width: 100%; /* 填充剩余空间 */
+  min-width: 0; /* 允许缩小到内容宽度 */
+  max-width: none; /* 不限制最大宽度 */
+  border: none; /* 不显示边框 */
+}
+
 .column-header {
   display: flex;
   justify-content: space-between;
@@ -1015,32 +1354,37 @@ function adjustTableBehavior() {
 /* 为可调整大小的列添加调整手柄 */
 .resizable-th {
   position: relative;
+  cursor: default; /* 默认情况下光标为默认样式 */
 }
 
-/* 创建一个透明的拖动区域，覆盖列的右边缘 */
+/* 添加拖动区域 */
 .resizable-th::after {
   content: '';
   position: absolute;
+  right: 0;
   top: 0;
-  right: -4px;  /* 调整位置，使拖动区域与边框重合 */
-  width: 8px;  /* 拖动区域的总宽度 */
-  height: 100%;
-  background-color: transparent;
+  bottom: 0;
+  width: 10px; /* 拖动区域宽度，增加可点击区域 */
   cursor: col-resize;
-  z-index: 20;  /* 提高z-index确保在最顶层 */
-  pointer-events: auto;  /* 确保接收鼠标事件 */
+  background: transparent;
+  z-index: 10;
+  margin-right: -5px; /* 扩大可点击区域 */
 }
 
-/* 当正在调整大小时，显示更明显的视觉反馈 */
-.connections-table.resizing::after {
-  background-color: #3b82f6;
+.resizable-th::after:hover {
+  background: #94a3b8; /* 悬停时显示灰色线条 */
   opacity: 0.7;
 }
 
+/* 当正在调整大小时，显示更明显的视觉反馈 */
+.connections-table.resizing {
+  user-select: none; /* 防止在拖拽过程中选中文本 */
+}
+
 /* 为调整手柄添加激活状态 */
-.resizing {
-  background-color: #3b82f6;
-  opacity: 0.7 !important;
+.connections-table.resizing .resizable-th.current-resizing::after {
+  background: #3b82f6; /* 调整大小时显示蓝色线条 */
+  opacity: 0.8;
 }
 
 .sortable-header {
@@ -1057,6 +1401,11 @@ function adjustTableBehavior() {
   color: #6b7280;
 }
 
+/* 确保表格容器有相对定位以便sticky定位正常工作 */
+.table-wrapper {
+  position: relative;
+}
+
 /* 进程名称单元格样式 */
 .process-name-cell {
   padding: 0 10px !important;
@@ -1065,7 +1414,7 @@ function adjustTableBehavior() {
 .process-with-icon {
   display: flex;
   align-items: center;
-  gap: 8px; /* 图标与文本之间的间距 */
+  gap: 3px; /* 图标与文本之间的间距 */
 }
 
 .process-icon {
@@ -1383,12 +1732,39 @@ button {
   flex-shrink: 0; /* 防止菜单栏被压缩 */
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
   min-height: 32px;
+  flex-wrap: nowrap; /* 防止换行 */
+  overflow: auto; /* 允许水平滚动，而不是隐藏溢出内容 */
+  min-width: max-content; /* 内容宽度至少等于所有项目的总和，确保间隙固定 */
+  width: 100%; /* 确保菜单栏占据整个容器宽度 */
+  position: sticky; /* 使菜单栏固定在顶部 */
+  top: 0; /* 固定在顶部 */
+  z-index: 100; /* 确保菜单栏在其他内容之上 */
+  flex: 0 0 auto; /* 不伸缩，按内容大小 */
 }
 
 .menu-group {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0; /* 防止菜单组被压缩 */
+  flex-wrap: nowrap; /* 防止组内元素换行 */
+  white-space: nowrap; /* 防止文字换行 */
+}
+
+/* 搜索框组固定宽度 */
+.search-group {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0; /* 禁止搜索组缩小 */
+  min-width: 200px; /* 增加最小宽度以避免重叠 */
+  width: 200px; /* 增加宽度以避免重叠 */
+  gap: 5px; /* 在标签和输入框之间添加间距 */
+}
+
+.search-group .menu-search {
+  min-width: 120px; /* 设置合适的最小宽度 */
+  width: 120px; /* 设置合适的宽度 */
+  flex: none; /* 禁止伸缩 */
 }
 
 .menu-label {
@@ -1441,14 +1817,73 @@ button {
   font-size: 0.75rem;
   background-color: #ffffff;
   color: #1e293b;
-  min-width: 120px;
+  min-width: 100px; /* 减少最小宽度以节省空间 */
+  max-width: 150px; /* 限制最大宽度 */
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+  flex-shrink: 0; /* 防止搜索框被压缩 */
 }
 
 .menu-search:focus {
   outline: none;
   border-color: #3b82f6;
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+
+.refresh-controls {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0; /* 防止刷新控件被压缩 */
+  flex: none; /* 禁止伸缩 */
+  width: 220px; /* 增加宽度以更好容纳按钮和下拉菜单，避免重叠 */
+}
+
+.refresh-toggle-btn {
+  padding: 3px 8px;
+  border: 1px solid #cbd5e1;
+  background-color: #e2e8f0;
+  color: #475569;
+  font-size: 0.75rem;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 40px;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 500;
+}
+
+.refresh-toggle-btn:hover {
+  background-color: #f1f5f9;
+  border-color: #94a3b8;
+  color: #334155;
+}
+
+.refresh-toggle-btn.active {
+  background-color: #10b981; /* 绿色表示激活状态 */
+  color: white;
+  border: 1px solid #059669;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+  font-weight: 600;
+}
+
+.refresh-interval-select {
+  padding: 2px 4px;
+  border: 1px solid #94a3b8;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  background-color: #ffffff;
+  color: #1e293b;
+  min-width: 60px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.refresh-interval-select:disabled {
+  background-color: #e2e8f0;
+  color: #94a3b8;
+  cursor: not-allowed;
 }
 
 /* 状态栏样式 */
@@ -1463,12 +1898,24 @@ button {
   color: #374151;
   min-height: 14px;
   flex-shrink: 0; /* 防止状态栏被压缩 */
+  flex-wrap: nowrap; /* 防止换行 */
+  overflow: hidden; /* 隐藏溢出内容，不显示滚动条 */
 }
 
 .status-item {
   display: flex;
   align-items: center;
   margin-right: 20px;
+  white-space: nowrap; /* 防止内容换行 */
+  position: relative; /* 为添加分隔符做准备 */
+}
+
+/* 为每个状态项添加右侧分隔符（最后一个除外） */
+.status-item:not(:last-child)::after {
+  content: '|';
+  margin-left: 25px; /* 在分隔符左侧添加一些间距 */
+  color: #9ca3af; /* 分隔符颜色 */
+  opacity: 0.7; /* 稍微降低分隔符的透明度 */
 }
 
 .status-label {
@@ -1488,6 +1935,26 @@ button {
 
 .status-value.udp-count {
   color: #c2410c; /* 橙色 */
+}
+
+.status-value.established-count {
+  color: #16a34a; /* 绿色 - 表示已建立的连接 */
+}
+
+.status-value.listen-count {
+  color: #3b82f6; /* 蓝色 - 表示监听状态 */
+}
+
+.status-value.wait-count {
+  color: #eab308; /* 黄色 - 表示等待状态 */
+}
+
+.status-value.close-wait-count {
+  color: #f97316; /* 橙色 - 表示关闭等待 */
+}
+
+.status-value.other-count {
+  color: #8b5cf6; /* 紫色 - 表示其他状态 */
 }
 
 .status-value.kernel-count {
@@ -1516,6 +1983,26 @@ button {
 
   .status-value.udp-count {
     color: #fb923c; /* 浅橙色 */
+  }
+
+  .status-value.established-count {
+    color: #4ade80; /* 浅绿色 */
+  }
+
+  .status-value.listen-count {
+    color: #93c5fd; /* 浅蓝色 */
+  }
+
+  .status-value.wait-count {
+    color: #facc15; /* 浅黄色 */
+  }
+
+  .status-value.close-wait-count {
+    color: #fb9467; /* 浅橙色 */
+  }
+
+  .status-value.other-count {
+    color: #c4b5fd; /* 浅紫色 */
   }
 
   .status-value.kernel-count {

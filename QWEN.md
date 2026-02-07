@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This is a cross-platform desktop application called "tcpview" built using the Tauri framework. It combines:
+This is a cross-platform desktop application called "TCPView" built using the Tauri framework. It combines:
 - **Frontend**: Vue 3 with TypeScript, using Vite as the build tool
 - **Backend**: Rust for system-level operations (specifically for network connection monitoring)
 - **Architecture**: Tauri enables the combination of web technologies (Vue) with Rust for native desktop applications
@@ -59,7 +59,8 @@ The application provides:
 - Real-time display of network connections (TCP/UDP)
 - Sorting capabilities by clicking on column headers
 - Adjustable column widths by dragging column edges
-- Auto-refresh functionality with configurable interval
+- Filtering by protocol (TCP/UDP) and connection state
+- Search functionality for process names and local addresses
 - Detailed connection information including:
   - Protocol (TCP/UDP)
   - Local address and port
@@ -71,6 +72,7 @@ The application provides:
   - Process icons (Windows only)
 - Right-click context menu with options to view process details or kill the process
 - Double-click to view detailed process information in a modal dialog
+- Status bar showing connection statistics
 
 ## Development Conventions
 
@@ -78,14 +80,16 @@ The application provides:
 - **Backend**: Rust functions annotated with `#[tauri::command]` are accessible from the frontend
 - **Communication**: Frontend communicates with backend via Tauri's `invoke()` mechanism
 - **Data Types**: Shared interfaces between frontend and backend for type safety
-- **Styling**: Component-scoped CSS with responsive design considerations
+- **Styling**: Component-scoped CSS with responsive design considerations and dark mode support
 
 ## Key Components
 
 ### Frontend (App.vue)
 - Connection table with sorting and resizing capabilities
+- Filtering and search functionality
 - Right-click context menu for process actions
 - Process details modal dialog
+- Status bar with connection statistics
 - Responsive layout using flexbox
 - Dark mode support
 

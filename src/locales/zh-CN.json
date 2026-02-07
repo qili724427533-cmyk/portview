@@ -26,8 +26,8 @@
     "stateUnconn": "未连接",
     "searchProcess": "搜索进程:",
     "searchPlaceholder": "输入进程名称...",
-    "searchLocalAddr": "本地地址:",
-    "localAddrPlaceholder": "输入本地地址...",
+    "searchLocalPort": "本地端口:",
+    "localPortPlaceholder": "输入本地端口...",
     "autoRefresh": "自动刷新:",
     "refreshStart": "开始",
     "refreshStop": "停止",
@@ -46,6 +46,7 @@
   },
   "contextMenu": {
     "processDetails": "进程详情",
+    "openContainingFolder": "打开程序所在目录",
     "killProcess": "杀死进程"
   },
   "statusBar": {
@@ -78,6 +79,8 @@
     "processKillFailed": "杀死进程失败: {error}",
     "getConnectionsFailed": "获取连接列表失败: {error}",
     "getProcessDetailsFailed": "获取进程详情失败: {error}",
+    "openFolderFailed": "打开文件夹失败: {error}",
+    "noExecutablePath": "进程 {name} 没有可执行文件路径",
     "connectionStateChanged": "检测到 {count} 个连接状态发生变化"
   }
 }

@@ -2,10 +2,25 @@
   <div v-if="showContextMenu" class="context-menu" :style="contextMenuStyle">
     <ul>
       <li @click="handleShowProcessDetails">
-        {{ t("contextMenu.processDetails") }}
+        <span class="menu-item-content">
+          <span class="menu-item-icon">&nbsp;</span>
+          {{ t("contextMenu.processDetails") }}
+        </span>
+      </li>
+      <li
+        @click="handleOpenContainingFolder"
+        v-if="props.selectedConnection && props.selectedConnection.pid"
+      >
+        <span class="menu-item-content">
+          <span class="menu-item-icon">📁</span>
+          {{ t("contextMenu.openContainingFolder") }}
+        </span>
       </li>
       <li @click="handleKillProcess">
-        {{ t("contextMenu.killProcess") }}
+        <span class="menu-item-content">
+          <span class="menu-item-icon">❌</span>
+          {{ t("contextMenu.killProcess") }}
+        </span>
       </li>
     </ul>
   </div>
@@ -30,6 +45,7 @@ interface Emits {
   (e: "update:showContextMenu", value: boolean): void;
   (e: "showProcessDetailsDialog", conn: TcpConnection): void;
   (e: "killProcess", conn: TcpConnection): void;
+  (e: "openContainingFolder", conn: TcpConnection): void;
 }
 
 const emit = defineEmits<Emits>();
@@ -50,13 +66,19 @@ const contextMenuStyle = computed(() => {
 // 方法
 const handleShowProcessDetails = () => {
   if (props.selectedConnection) {
-    emit('showProcessDetailsDialog', props.selectedConnection);
+    emit("showProcessDetailsDialog", props.selectedConnection);
   }
 };
 
 const handleKillProcess = () => {
   if (props.selectedConnection) {
-    emit('killProcess', props.selectedConnection);
+    emit("killProcess", props.selectedConnection);
+  }
+};
+
+const handleOpenContainingFolder = () => {
+  if (props.selectedConnection) {
+    emit("openContainingFolder", props.selectedConnection);
   }
 };
 </script>
@@ -103,6 +125,19 @@ const handleKillProcess = () => {
 
 .context-menu li:not(:last-child) {
   border-bottom: 1px solid #e5e7eb;
+}
+
+.menu-item-content {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* 图标和文本之间的间距 */
+}
+
+.menu-item-icon {
+  width: 16px; /* 固定宽度以确保对齐 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* 暗色主题下的右键菜单样式 */

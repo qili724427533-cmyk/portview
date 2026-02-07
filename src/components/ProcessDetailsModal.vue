@@ -266,8 +266,8 @@ const formatDate = (timestamp: number | null): string => {
 }
 
 .open-folder-btn {
-  background: none;
-  border: none;
+  background: none !important;
+  border: none !important;
   border-radius: 4px;
   cursor: pointer;
   padding: 2px 6px;
@@ -277,11 +277,15 @@ const formatDate = (timestamp: number | null): string => {
   align-items: center;
   justify-content: center;
   flex-shrink: 0; /* 防止按钮被压缩 */
+  box-shadow: none !important; /* 确保没有阴影 */
+  outline: none !important; /* 确保没有轮廓 */
 }
 
 .open-folder-btn:hover {
   color: #2563eb; /* 更深的蓝色 */
-  background: #f3f4f6; /* 浅灰色背景 */
+  background: transparent !important; /* 保持透明背景 */
+  border: none !important; /* 确保边框为无 */
+  box-shadow: none !important; /* 确保没有阴影 */
 }
 
 .dark .open-folder-btn {
@@ -290,7 +294,9 @@ const formatDate = (timestamp: number | null): string => {
 
 .dark .open-folder-btn:hover {
   color: #3b82f6; /* 暗色主题下的更深蓝色 */
-  background: #374151; /* 暗色主题下的灰色背景 */
+  background: transparent !important; /* 保持透明背景 */
+  border: none !important; /* 确保边框为无 */
+  box-shadow: none !important; /* 确保没有阴影 */
 }
 
 /* 暗色主题下的弹窗样式 */

@@ -26,8 +26,8 @@
     "stateUnconn": "Unconnected",
     "searchProcess": "Search Process:",
     "searchPlaceholder": "Enter process name...",
-    "searchLocalAddr": "Local Address:",
-    "localAddrPlaceholder": "Enter local address...",
+    "searchLocalPort": "Local Port:",
+    "localPortPlaceholder": "Enter local port...",
     "autoRefresh": "Auto Refresh:",
     "refreshStart": "Start",
     "refreshStop": "Stop",
@@ -46,6 +46,7 @@
   },
   "contextMenu": {
     "processDetails": "Process Details",
+    "openContainingFolder": "Open Containing Folder",
     "killProcess": "Kill Process"
   },
   "statusBar": {
@@ -78,6 +79,8 @@
     "processKillFailed": "Failed to kill process: {error}",
     "getConnectionsFailed": "Failed to get connections: {error}",
     "getProcessDetailsFailed": "Failed to get process details: {error}",
+    "openFolderFailed": "Failed to open folder: {error}",
+    "noExecutablePath": "Process {name} has no executable path",
     "connectionStateChanged": "Detected {count} connection(s) with state changes"
   }
 }

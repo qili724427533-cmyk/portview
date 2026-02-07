@@ -61,12 +61,12 @@
     </div>
 
     <div class="menu-group">
-      <label class="menu-label">{{ t("menu.searchLocalAddr") }}</label>
+      <label class="menu-label">{{ t("menu.searchLocalPort") }}</label>
       <input
         type="text"
-        :value="searchLocalAddr"
-        @input="handleSearchLocalAddrInput"
-        :placeholder="t('menu.localAddrPlaceholder')"
+        :value="searchLocalPort"
+        @input="handleSearchLocalPortInput"
+        :placeholder="t('menu.localPortPlaceholder')"
         class="menu-search"
       />
     </div>
@@ -132,7 +132,7 @@ interface Props {
   filterProtocol: "all" | "TCP" | "UDP";
   filterState: string;
   searchProcessName: string;
-  searchLocalAddr: string;
+  searchLocalPort: string;
   isAutoRefreshEnabled: boolean;
   selectedRefreshInterval: number;
   refreshIntervals: number[];
@@ -146,7 +146,7 @@ interface Emits {
   (e: "update:filterProtocol", value: "all" | "TCP" | "UDP"): void;
   (e: "update:filterState", value: string): void;
   (e: "update:searchProcessName", value: string): void;
-  (e: "update:searchLocalAddr", value: string): void;
+  (e: "update:searchLocalPort", value: string): void;
   (e: "applyFiltersAndSearch"): void;
   (e: "toggleAutoRefresh"): void;
   (e: "changeRefreshInterval", interval: number): void;
@@ -198,9 +198,9 @@ const handleSearchProcessInput = (event: Event) => {
   emit('applyFiltersAndSearch');
 };
 
-const handleSearchLocalAddrInput = (event: Event) => {
+const handleSearchLocalPortInput = (event: Event) => {
   const target = event.target as HTMLInputElement;
-  emit('update:searchLocalAddr', target.value);
+  emit('update:searchLocalPort', target.value);
   // 触发搜索
   emit('applyFiltersAndSearch');
 };

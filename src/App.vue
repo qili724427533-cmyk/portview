@@ -92,7 +92,7 @@ const customColumnWidths = ref<Record<string, number>>({});
 const filterProtocol = ref<"all" | "TCP" | "UDP">("all");
 const filterState = ref("all");
 const searchProcessName = ref("");
-const searchLocalAddr = ref("");
+const searchLocalPort = ref("");
 
 // 状态栏信息
 const statusBarInfo = ref({
@@ -145,12 +145,21 @@ async function loadConnections() {
       );
     }
 
-    // 本地地址搜索
-    if (searchLocalAddr.value.trim() !== "") {
-      const searchTerm = searchLocalAddr.value.toLowerCase().trim();
-      filteredResult = filteredResult.filter((conn) =>
-        conn.local_addr.toLowerCase().includes(searchTerm),
-      );
+    // 本地端口搜索
+    if (searchLocalPort.value.trim() !== "") {
+      const searchTerm = searchLocalPort.value.trim();
+      filteredResult = filteredResult.filter((conn) => {
+        // 检查输入是否为纯数字（端口号）
+        const isNumeric = /^\d+$/.test(searchTerm);
+        if (isNumeric) {
+          // 如果是数字，按端口号精确匹配
+          return conn.local_port.toString() === searchTerm;
+        } else {
+          // 如果不是数字，按正则表达式匹配
+          const regex = new RegExp(searchTerm, 'i');
+          return regex.test(conn.local_port.toString());
+        }
+      });
     }
 
     // 标记状态变化的连接
@@ -308,6 +317,36 @@ async function killProcess(conn: TcpConnection) {
       console.error(t("alerts.processKillFailed", { error }), error);
       showNotification(
         t("alerts.processKillFailed", { error }),
+        'error'
+      );
+    }
+  }
+}
+
+// 打开进程所在目录
+async function openContainingFolder(conn: TcpConnection) {
+  if (conn.pid) {
+    try {
+      // 获取进程详细信息以获得可执行路径
+      const details: ProcessDetails = await invoke("get_process_details", {
+        pid: conn.pid,
+      });
+      
+      // 检查可执行路径是否存在且不为空
+      if (details.executable_path && details.executable_path.trim() !== '') {
+        // 调用打开目录功能
+        await invoke('open_folder', { path: details.executable_path });
+      } else {
+        // 如果可执行路径为空，显示提示信息
+        showNotification(
+          t("alerts.noExecutablePath", { name: conn.process_name || "Unknown" }),
+          'info'
+        );
+      }
+    } catch (error) {
+      console.error(t("alerts.openFolderFailed", { error }), error);
+      showNotification(
+        t("alerts.openFolderFailed", { error }),
         'error'
       );
     }
@@ -603,7 +642,7 @@ function checkSystemThemePreference() {
       :filterProtocol="filterProtocol"
       :filterState="filterState"
       :searchProcessName="searchProcessName"
-      :searchLocalAddr="searchLocalAddr"
+      :searchLocalPort="searchLocalPort"
       :isAutoRefreshEnabled="isAutoRefreshEnabled"
       :selectedRefreshInterval="selectedRefreshInterval"
       :refreshIntervals="refreshIntervals"
@@ -614,7 +653,7 @@ function checkSystemThemePreference() {
         applyFiltersAndSearch();
       "
       @update:searchProcessName="searchProcessName = $event"
-      @update:searchLocalAddr="searchLocalAddr = $event"
+      @update:searchLocalPort="searchLocalPort = $event"
       @applyFiltersAndSearch="applyFiltersAndSearch"
       @toggleAutoRefresh="toggleAutoRefresh"
       @changeRefreshInterval="changeRefreshInterval"
@@ -646,6 +685,7 @@ function checkSystemThemePreference() {
       @update:showContextMenu="showContextMenu = $event"
       @showProcessDetailsDialog="showProcessDetailsDialog"
       @killProcess="killProcess"
+      @openContainingFolder="openContainingFolder"
     />
 
     <!-- 状态栏 -->

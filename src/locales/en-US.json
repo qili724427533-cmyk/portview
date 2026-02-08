@@ -89,10 +89,10 @@
     "appName": "Application Name",
     "version": "Version",
     "description": "Description",
-    "descriptionText": "PortView is a cross-platform network connection monitoring tool that displays TCP/UDP connections in real-time.",
+    "descriptionText": "PortView is a cross-platform network connection port monitoring tool that displays TCP/UDP connections in real-time.",
     "author": "Author",
     "github": "GitHub",
-    "githubLink": "https://github.com/vcyang/portview",
+    "githubLink": "https://github.com/vcqr/portview",
     "okButton": "OK"
   }
 }

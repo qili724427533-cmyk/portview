@@ -69,6 +69,9 @@ const processDetails = ref<ProcessDetails | null>(null);
 // 关于对话框相关状态
 const showAbout = ref(false);
 
+// 应用版本号
+const appVersion = ref('Loading...');
+
 // 通知提示相关状态
 const showNotificationBox = ref(false);
 const notificationMessage = ref('');
@@ -540,7 +543,7 @@ function changeRefreshInterval(interval: number) {
 }
 
 // 页面加载完成后自动获取连接列表
-onMounted(() => {
+onMounted(async () => {
   // 设置语言为本地存储的语言或浏览器语言
   const savedLang = localStorage.getItem("locale");
   if (savedLang && (savedLang === "zh" || savedLang === "en")) {
@@ -553,8 +556,19 @@ onMounted(() => {
 
   loadConnections();
 
+  // 获取应用版本
+  try {
+    appVersion.value = await invoke("get_app_version");
+  } catch (error) {
+    console.error('Failed to get app version:', error);
+    appVersion.value = 'Unknown';
+  }
+
   // 监听文档上的点击事件，用于隐藏右键菜单
   document.addEventListener("click", hideContextMenu);
+
+  // 禁用原生右键菜单
+  document.addEventListener("contextmenu", disableNativeContextMenu);
 
   // 监视主题变化
   watch(
@@ -585,7 +599,16 @@ onUnmounted(() => {
 
   // 移除文档点击事件监听器
   document.removeEventListener("click", hideContextMenu);
+  
+  // 移除右键菜单事件监听器
+  document.removeEventListener("contextmenu", disableNativeContextMenu);
 });
+
+// 禁用原生右键菜单的函数
+function disableNativeContextMenu(e: MouseEvent) {
+  // 总是阻止原生右键菜单，让应用的自定义右键菜单处理所有情况
+  e.preventDefault();
+}
 
 // 语言切换功能
 function changeLanguage(lang: "zh" | "en") {
@@ -707,6 +730,7 @@ function checkSystemThemePreference() {
     <!-- 关于对话框 -->
     <AboutDialog
       :showAbout="showAbout"
+      :appVersion="appVersion"
       @update:showAbout="showAbout = $event"
     />
 

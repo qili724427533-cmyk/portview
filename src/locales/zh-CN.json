@@ -85,14 +85,14 @@
     "connectionStateChanged": "检测到 {count} 个连接状态发生变化"
   },
   "about": {
-    "title": "关于 PortView",
+    "title": "关于",
     "appName": "应用名称",
     "version": "版本",
     "description": "描述",
-    "descriptionText": "PortView 是一款跨平台的网络连接监控工具，可实时显示系统的TCP/UDP连接情况。",
+    "descriptionText": "PortView 是一款跨平台的网络连接端口查看工具，可实时显示系统的TCP/UDP连接情况。",
     "author": "作者",
     "github": "GitHub",
-    "githubLink": "https://github.com/vcyang/portview",
+    "githubLink": "https://github.com/vcqr/portview",
     "okButton": "确定"
   }
 }

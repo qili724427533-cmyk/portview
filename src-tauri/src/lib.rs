@@ -993,6 +993,13 @@ async fn open_folder(path: String) -> Result<(), String> {
     Ok(())
 }
 
+// 获取应用版本号
+#[tauri::command]
+async fn get_app_version() -> Result<String, String> {
+    let version = env!("CARGO_PKG_VERSION");
+    Ok(version.to_string())
+}
+
 // 更新窗口主题的备用实现（当平台特定代码不可用时）
 #[tauri::command]
 async fn update_window_theme(_window: tauri::Window, _is_dark_mode: bool) -> Result<(), String> {
@@ -1011,7 +1018,7 @@ fn greet(name: &str) -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, get_connections, get_process_details, kill_process, open_folder, update_window_theme])
+        .invoke_handler(tauri::generate_handler![greet, get_connections, get_process_details, kill_process, open_folder, get_app_version, update_window_theme])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

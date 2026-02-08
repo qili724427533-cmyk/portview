@@ -1,7 +1,7 @@
 {
   "name": "portview",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.0.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,8 +11,8 @@
   },
   "dependencies": {
     "@intlify/vue-i18n-loader": "^4.2.0",
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-opener": "^2",
+    "@tauri-apps/api": "^2.10.0",
+    "@tauri-apps/plugin-opener": "^2.2.0",
     "vue": "^3.5.13",
     "vue-i18n": "^9.14.5"
   },

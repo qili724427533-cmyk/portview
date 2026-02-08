@@ -32,6 +32,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 
 interface Props {
   showAbout: boolean;
+  appVersion: string;
 }
 
 const props = defineProps<Props>();
@@ -43,8 +44,6 @@ interface Emits {
 const emit = defineEmits<Emits>();
 
 const { t } = useI18n();
-
-const appVersion = "1.0.0"; // 使用应用的实际版本号
 
 const closeAbout = () => {
   emit('update:showAbout', false);

@@ -1,13 +1,8 @@
-use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo, TcpState};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use sysinfo::{System, Process, Pid};
-use std::fs;
-use std::io::Cursor;
 #[cfg(target_os = "windows")]
 use image;
-#[cfg(target_os = "windows")]
-use winapi::shared::windef::HICON;
+use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo, TcpState};
+use serde::{Deserialize, Serialize};
+use sysinfo::{Pid, System};
 #[cfg(target_os = "macos")]
 use tauri::Manager;
 
@@ -21,9 +16,9 @@ pub struct TcpConnection {
     pub state: String,
     pub pid: Option<u32>,
     pub process_name: Option<String>,
-    pub icon: Option<String>, // Base64 encoded icon data
+    pub icon: Option<String>,    // Base64 encoded icon data
     pub start_time: Option<u64>, // Process start time in seconds since Unix epoch
-    pub fill_column: String, // Fill column for filling remaining space
+    pub fill_column: String,     // Fill column for filling remaining space
 }
 
 // 定义进程详情结构
@@ -64,11 +59,10 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
     use std::ptr;
-    use winapi::um::shellapi::ExtractIconW;
-    use winapi::um::winuser::{DestroyIcon};
-    use winapi::shared::windef::HICON;
     use winapi::shared::minwindef::HINSTANCE;
-    
+    use winapi::um::shellapi::ExtractIconW;
+    use winapi::um::winuser::DestroyIcon;
+
     // 尝试通过PID获取进程的可执行文件路径
     if let Ok(exe_path) = get_executable_path_from_pid(pid) {
         // 将路径转换为宽字符字符串
@@ -76,7 +70,7 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
             .encode_wide()
             .chain(std::iter::once(0))
             .collect();
-        
+
         // 使用ExtractIconW从EXE文件中提取图标
         unsafe {
             let h_instance = ptr::null_mut() as HINSTANCE;
@@ -85,15 +79,16 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
                 wide_path.as_ptr(),
                 0, // 第一个图标
             );
-            
+
             // 检查图标句柄是否有效
-            if h_icon as usize > 1 { // 0和1是特殊值，表示没有图标或错误
+            if h_icon as usize > 1 {
+                // 0和1是特殊值，表示没有图标或错误
                 // 尝试将图标转换为图像数据
                 let icon_data = extract_icon_to_png(h_icon);
-                
+
                 // 销毁图标句柄
                 DestroyIcon(h_icon);
-                
+
                 return icon_data;
             } else {
                 // 销毁无效图标句柄
@@ -103,27 +98,31 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
             }
         }
     }
-    
+
     None
 }
 
 // 辅助函数：将图标转换为PNG数据的Base64编码
 #[cfg(target_os = "windows")]
+use winapi::shared::windef::HICON;
+
+#[cfg(target_os = "windows")]
 unsafe fn extract_icon_to_png(h_icon: HICON) -> Option<String> {
-    use winapi::um::winuser::{GetIconInfo, GetDC, ReleaseDC, DrawIconEx};
-    use winapi::um::wingdi::{GetDIBits, CreateDIBSection, DeleteObject, 
-                             BI_RGB, DIB_RGB_COLORS, SelectObject, CreateCompatibleDC, DeleteDC};
-    use winapi::shared::windef::{HDC, HBITMAP};
-    use winapi::um::winnt::HANDLE;
-    use std::ptr;
     use std::mem;
-    
+    use std::ptr;
+    use winapi::um::wingdi::{
+        CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetDIBits, SelectObject,
+        BI_RGB, DIB_RGB_COLORS,
+    };
+    use winapi::um::winnt::HANDLE;
+    use winapi::um::winuser::{DrawIconEx, GetDC, GetIconInfo, ReleaseDC};
+
     // 获取图标信息
     let mut icon_info: winapi::um::winuser::ICONINFO = mem::zeroed();
     if GetIconInfo(h_icon, &mut icon_info) == 0 {
         return None;
     }
-    
+
     // 获取屏幕DC
     let hdc_screen = GetDC(ptr::null_mut());
     if hdc_screen.is_null() {
@@ -136,7 +135,7 @@ unsafe fn extract_icon_to_png(h_icon: HICON) -> Option<String> {
         }
         return None;
     }
-    
+
     // 创建兼容DC
     let hdc_mem = CreateCompatibleDC(hdc_screen);
     if hdc_mem.is_null() {
@@ -149,17 +148,18 @@ unsafe fn extract_icon_to_png(h_icon: HICON) -> Option<String> {
         }
         return None;
     }
-    
+
     // 选择位图到内存DC
     let hbm_old = SelectObject(hdc_mem, icon_info.hbmColor as *mut _);
-    
+
     // 获取颜色位图信息
     let mut bitmap: winapi::um::wingdi::BITMAP = mem::zeroed();
     if winapi::um::wingdi::GetObjectW(
         icon_info.hbmColor as HANDLE,
         mem::size_of::<winapi::um::wingdi::BITMAP>() as i32,
         &mut bitmap as *mut _ as *mut _,
-    ) == 0 {
+    ) == 0
+    {
         SelectObject(hdc_mem, hbm_old);
         DeleteDC(hdc_mem);
         ReleaseDC(ptr::null_mut(), hdc_screen);
@@ -171,10 +171,10 @@ unsafe fn extract_icon_to_png(h_icon: HICON) -> Option<String> {
         }
         return None;
     }
-    
+
     let width = bitmap.bmWidth;
     let height = bitmap.bmHeight.abs();
-    
+
     // 准备BITMAPINFO结构
     let mut bmi: winapi::um::wingdi::BITMAPINFO = mem::zeroed();
     bmi.bmiHeader.biSize = mem::size_of::<winapi::um::wingdi::BITMAPINFOHEADER>() as u32;
@@ -183,18 +183,11 @@ unsafe fn extract_icon_to_png(h_icon: HICON) -> Option<String> {
     bmi.bmiHeader.biPlanes = 1;
     bmi.bmiHeader.biBitCount = 32;
     bmi.bmiHeader.biCompression = BI_RGB;
-    
+
     // 创建DIB Section
     let mut bits: *mut winapi::ctypes::c_void = ptr::null_mut();
-    let h_bitmap = CreateDIBSection(
-        hdc_mem,
-        &bmi,
-        DIB_RGB_COLORS,
-        &mut bits,
-        ptr::null_mut(),
-        0,
-    );
-    
+    let h_bitmap = CreateDIBSection(hdc_mem, &bmi, DIB_RGB_COLORS, &mut bits, ptr::null_mut(), 0);
+
     if h_bitmap.is_null() {
         SelectObject(hdc_mem, hbm_old);
         DeleteDC(hdc_mem);
@@ -207,25 +200,27 @@ unsafe fn extract_icon_to_png(h_icon: HICON) -> Option<String> {
         }
         return None;
     }
-    
+
     // 选择新位图到内存DC
     let hbm_old_dib = SelectObject(hdc_mem, h_bitmap as *mut _);
-    
+
     // 将原图标绘制到位图上
     DrawIconEx(
         hdc_mem,
-        0, 0,
+        0,
+        0,
         h_icon,
-        width, height,
+        width,
+        height,
         0,
         ptr::null_mut(),
         0x0003, // DI_NORMAL
     );
-    
+
     // 获取DIB位
     let buffer_size = (width * height * 4) as usize;
     let mut buffer: Vec<u8> = vec![0; buffer_size];
-    
+
     let nbits = GetDIBits(
         hdc_mem,
         h_bitmap,
@@ -235,43 +230,55 @@ unsafe fn extract_icon_to_png(h_icon: HICON) -> Option<String> {
         &mut bmi,
         DIB_RGB_COLORS,
     );
-    
+
     // 恢复DC状态
     SelectObject(hdc_mem, hbm_old_dib);
     SelectObject(hdc_mem, hbm_old);
-    
+
     // 清理资源
     DeleteObject(h_bitmap as *mut _);
     DeleteDC(hdc_mem);
     ReleaseDC(ptr::null_mut(), hdc_screen);
-    
+
     if nbits != 0 {
         // 将BGRA转换为RGBA（Windows使用BGRA，而PNG使用RGBA）
         for chunk in buffer.chunks_exact_mut(4) {
             chunk.swap(0, 2); // 交换B和R通道
         }
-        
+
+        // 由于Windows DIB格式的Y轴方向与标准图像相反，需要垂直翻转图像
+        let row_size = (width * 4) as usize;
+        let mut flipped_buffer = Vec::with_capacity(buffer.len());
+
+        // 从最后一行开始复制到新缓冲区，实现垂直翻转
+        for row in (0..height).rev() {
+            let start = (row * width * 4) as usize;
+            let end = start + row_size;
+            flipped_buffer.extend_from_slice(&buffer[start..end]);
+        }
+
         // 将图标数据转换为PNG格式
-        use std::io::Cursor;
         use image::ImageFormat;
-        
-        if let Some(img) = image::RgbaImage::from_raw(width as u32, height as u32, buffer) {
+        use std::io::Cursor;
+
+        if let Some(img) = image::RgbaImage::from_raw(width as u32, height as u32, flipped_buffer) {
             let mut png_data: Vec<u8> = Vec::new();
             if let Ok(_) = img.write_to(&mut Cursor::new(&mut png_data), ImageFormat::Png) {
-                let base64_icon = base64::encode(&png_data);
-                
+                let base64_icon =
+                    base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &png_data);
+
                 if !icon_info.hbmColor.is_null() {
                     DeleteObject(icon_info.hbmColor as *mut _);
                 }
                 if !icon_info.hbmMask.is_null() {
                     DeleteObject(icon_info.hbmMask as *mut _);
                 }
-                
+
                 return Some(base64_icon);
             }
         }
     }
-    
+
     // 清理资源
     if !icon_info.hbmColor.is_null() {
         DeleteObject(icon_info.hbmColor as *mut _);
@@ -279,51 +286,16 @@ unsafe fn extract_icon_to_png(h_icon: HICON) -> Option<String> {
     if !icon_info.hbmMask.is_null() {
         DeleteObject(icon_info.hbmMask as *mut _);
     }
-    
+
     None
 }
 
 // 辅助函数：从EXE文件中提取图标
-#[cfg(target_os = "windows")]
-unsafe fn extract_icon_from_exe(exe_path: &str) -> Option<String> {
-    use std::ffi::OsStr;
-    use std::os::windows::ffi::OsStrExt;
-    use winapi::um::winuser::{DrawIconEx, GetDC, ReleaseDC};
-    use winapi::um::wingdi::{CreateCompatibleDC, DeleteDC, GetDIBits, CreateDIBSection, DeleteObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS};
-    use winapi::shared::windef::{HICON, HDC, HBITMAP};
-    use winapi::um::libloaderapi::{LoadLibraryW, FreeLibrary};
-    use winapi::shared::minwindef::HMODULE;
-    use std::ptr;
-    use std::mem;
-    
-    // 将路径转换为宽字符字符串
-    let wide_path: Vec<u16> = OsStr::new(exe_path)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
-    
-    // 加载模块
-    let h_module: HMODULE = LoadLibraryW(wide_path.as_ptr());
-    if h_module.is_null() {
-        return None;
-    }
-    
-    // 这里我们尝试使用Windows API从EXE文件中提取图标
-    // 由于这涉及复杂的Windows API调用，我们简化处理
-    // 实际上，我们会使用一个专门的库来处理这个
-    
-    // 释放模块
-    FreeLibrary(h_module);
-    
-    // 由于手动实现从EXE提取图标非常复杂，我们暂时返回None
-    // 在实际应用中，建议使用专门的库如'icon-park'或'windows-icons'
-    None
-}
 
 #[cfg(all(not(target_os = "windows"), target_os = "linux"))]
 fn get_process_icon_by_pid(pid: u32) -> Option<String> {
-    use std::process::Command;
     use std::path::Path;
+    use std::process::Command;
 
     // 尝试通过PID获取进程的可执行文件路径
     let exe_path = format!("/proc/{}/exe", pid);
@@ -350,7 +322,9 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
         .to_string();
 
     // 尝试多种可能的图标路径
-    let icon_sizes = ["16x16", "24x24", "32x32", "48x48", "64x64", "128x128", "256x256", "scalable"];
+    let icon_sizes = [
+        "16x16", "24x24", "32x32", "48x48", "64x64", "128x128", "256x256", "scalable",
+    ];
     let icon_themes = ["hicolor", "oxygen", "gnome", "breeze"];
     let icon_types = ["apps", "categories", "devices", "mimetypes"];
 
@@ -372,7 +346,10 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
                                     );
                                     if Path::new(&icon_path).exists() {
                                         if let Ok(image_data) = std::fs::read(&icon_path) {
-                                            return Some(base64::encode(&image_data));
+                                            return Some(base64::Engine::encode(
+                                                &base64::engine::general_purpose::STANDARD,
+                                                &image_data,
+                                            ));
                                         }
                                     }
                                 }
@@ -389,8 +366,14 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
         for theme in &icon_themes {
             for icon_type in &icon_types {
                 let icon_paths = vec![
-                    format!("/usr/share/icons/{}/{}/{}/{}.png", theme, size, icon_type, &basename),
-                    format!("/usr/share/icons/{}/{}/{}/{}.svg", theme, size, icon_type, &basename),
+                    format!(
+                        "/usr/share/icons/{}/{}/{}/{}.png",
+                        theme, size, icon_type, &basename
+                    ),
+                    format!(
+                        "/usr/share/icons/{}/{}/{}/{}.svg",
+                        theme, size, icon_type, &basename
+                    ),
                     format!("/usr/share/pixmaps/{}.png", &basename),
                     format!("/usr/share/pixmaps/{}.svg", &basename),
                 ];
@@ -398,7 +381,10 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
                 for icon_path in icon_paths {
                     if Path::new(&icon_path).exists() {
                         if let Ok(image_data) = std::fs::read(&icon_path) {
-                            return Some(base64::encode(&image_data));
+                            return Some(base64::Engine::encode(
+                                &base64::engine::general_purpose::STANDARD,
+                                &image_data,
+                            ));
                         }
                     }
                 }
@@ -426,7 +412,9 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
     let lsof_stdout = String::from_utf8(lsof_output.stdout).ok()?;
     let executable_path = lsof_stdout
         .lines()
-        .find(|line| line.starts_with('n') && (line.contains("/Contents/MacOS/") || line.contains(".app")))
+        .find(|line| {
+            line.starts_with('n') && (line.contains("/Contents/MacOS/") || line.contains(".app"))
+        })
         .map(|line| line[1..].to_string()); // 移除'n'前缀
 
     // 如果找到了.app包路径，构建对应的Resources路径
@@ -434,27 +422,33 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
         if path.contains("/Contents/MacOS/") {
             // 从可执行文件路径推导出Resources路径
             if let Some(contents_index) = path.find("/Contents/MacOS/") {
-                let resources_path = format!("{}{}", 
-                    &path[..contents_index], 
-                    "/Contents/Resources/");
-                
+                let resources_path =
+                    format!("{}{}", &path[..contents_index], "/Contents/Resources/");
+
                 // 尝试找到Info.plist来确定主图标文件名
                 let info_plist_path = format!("{}{}", resources_path, "Info.plist");
-                
+
                 // 默认图标名称
                 let mut icon_name = "App.icns".to_string();
-                
+
                 // 尝试从Info.plist中读取CFBundleIconFile
                 if std::path::Path::new(&info_plist_path).exists() {
                     if let Ok(plist_content) = std::fs::read_to_string(&info_plist_path) {
                         // 简单解析plist文件查找图标名称
                         if let Some(start) = plist_content.find("<key>CFBundleIconFile</key>") {
-                            if let Some(content_start) = plist_content[start..].find("<string>").map(|i| start + i + 8) {
-                                if let Some(content_end) = plist_content[content_start..].find("</string>").map(|i| content_start + i) {
-                                    let extracted_icon_name = &plist_content[content_start..content_end];
+                            if let Some(content_start) = plist_content[start..]
+                                .find("<string>")
+                                .map(|i| start + i + 8)
+                            {
+                                if let Some(content_end) = plist_content[content_start..]
+                                    .find("</string>")
+                                    .map(|i| content_start + i)
+                                {
+                                    let extracted_icon_name =
+                                        &plist_content[content_start..content_end];
                                     if !extracted_icon_name.is_empty() {
                                         icon_name = extracted_icon_name.to_string();
-                                        
+
                                         // 确保图标文件有.icns扩展名
                                         if !icon_name.ends_with(".icns") {
                                             icon_name.push_str(".icns");
@@ -463,17 +457,27 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
                                 }
                             }
                         }
-                        
+
                         // 如果上面没找到，尝试找SF Bundle Icons
                         if icon_name == "App.icns" {
                             if let Some(start) = plist_content.find("<key>CFBundleIcons</key>") {
-                                if let Some(key_pos) = plist_content[start..].find("<key>CFBundleIconFile</key>").map(|i| start + i) {
-                                    if let Some(content_start) = plist_content[key_pos..].find("<string>").map(|i| key_pos + i + 8) {
-                                        if let Some(content_end) = plist_content[content_start..].find("</string>").map(|i| content_start + i) {
-                                            let extracted_icon_name = &plist_content[content_start..content_end];
+                                if let Some(key_pos) = plist_content[start..]
+                                    .find("<key>CFBundleIconFile</key>")
+                                    .map(|i| start + i)
+                                {
+                                    if let Some(content_start) = plist_content[key_pos..]
+                                        .find("<string>")
+                                        .map(|i| key_pos + i + 8)
+                                    {
+                                        if let Some(content_end) = plist_content[content_start..]
+                                            .find("</string>")
+                                            .map(|i| content_start + i)
+                                        {
+                                            let extracted_icon_name =
+                                                &plist_content[content_start..content_end];
                                             if !extracted_icon_name.is_empty() {
                                                 icon_name = extracted_icon_name.to_string();
-                                                
+
                                                 // 确保图标文件有.icns扩展名
                                                 if !icon_name.ends_with(".icns") {
                                                     icon_name.push_str(".icns");
@@ -486,15 +490,18 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
                         }
                     }
                 }
-                
+
                 let icon_path = format!("{}{}", resources_path, icon_name);
                 if std::path::Path::new(&icon_path).exists() {
                     // 尝试使用sips将icns转换为png
                     if let Ok(png_data) = convert_icns_to_png(&icon_path) {
-                        return Some(base64::encode(&png_data));
+                        return Some(base64::Engine::encode(
+                            &base64::engine::general_purpose::STANDARD,
+                            &png_data,
+                        ));
                     }
                 }
-                
+
                 // 如果指定的图标文件不存在，尝试常见的图标文件名
                 let common_icon_names = vec![
                     "App.icns".to_string(),
@@ -503,14 +510,17 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
                     "Icon.icns".to_string(),
                     "icon.icns".to_string(),
                     "AppIcon.icns".to_string(),
-                    "appicon.icns".to_string()
+                    "appicon.icns".to_string(),
                 ];
-                
+
                 for icon_name in &common_icon_names {
                     let fallback_icon_path = format!("{}{}", resources_path, icon_name);
                     if std::path::Path::new(&fallback_icon_path).exists() {
                         if let Ok(png_data) = convert_icns_to_png(&fallback_icon_path) {
-                            return Some(base64::encode(&png_data));
+                            return Some(base64::Engine::encode(
+                                &base64::engine::general_purpose::STANDARD,
+                                &png_data,
+                            ));
                         }
                     }
                 }
@@ -529,7 +539,7 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
 
         let raw_process_name = String::from_utf8(ps_output.stdout).ok()?;
         let process_name = raw_process_name.trim();
-        
+
         // 提取进程名（去除路径）
         let clean_process_name = process_name
             .rsplit('/')
@@ -540,9 +550,15 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
         // 尝试在多个位置查找.app包
         let app_paths = [
             format!("/Applications/{}.app", clean_process_name),
-            format!("/Applications/{}/{}.app", clean_process_name, clean_process_name),
+            format!(
+                "/Applications/{}/{}.app",
+                clean_process_name, clean_process_name
+            ),
             format!("/System/Applications/{}.app", clean_process_name),
-            format!("/System/Applications/{}/{}.app", clean_process_name, clean_process_name),
+            format!(
+                "/System/Applications/{}/{}.app",
+                clean_process_name, clean_process_name
+            ),
             format!("/Users/Shared/Applications/{}.app", clean_process_name),
         ];
 
@@ -551,16 +567,23 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
                 // 尝试从Info.plist获取图标名
                 let info_plist_path = format!("{}/Contents/Resources/Info.plist", app_path);
                 let mut icon_name = "App.icns".to_string();
-                
+
                 if std::path::Path::new(&info_plist_path).exists() {
                     if let Ok(plist_content) = std::fs::read_to_string(&info_plist_path) {
                         if let Some(start) = plist_content.find("<key>CFBundleIconFile</key>") {
-                            if let Some(content_start) = plist_content[start..].find("<string>").map(|i| start + i + 8) {
-                                if let Some(content_end) = plist_content[content_start..].find("</string>").map(|i| content_start + i) {
-                                    let extracted_icon_name = &plist_content[content_start..content_end];
+                            if let Some(content_start) = plist_content[start..]
+                                .find("<string>")
+                                .map(|i| start + i + 8)
+                            {
+                                if let Some(content_end) = plist_content[content_start..]
+                                    .find("</string>")
+                                    .map(|i| content_start + i)
+                                {
+                                    let extracted_icon_name =
+                                        &plist_content[content_start..content_end];
                                     if !extracted_icon_name.is_empty() {
                                         icon_name = extracted_icon_name.to_string();
-                                        
+
                                         // 确保图标文件有.icns扩展名
                                         if !icon_name.ends_with(".icns") {
                                             icon_name.push_str(".icns");
@@ -576,10 +599,13 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
                 let icon_path = format!("{}{}", resources_path, icon_name);
                 if std::path::Path::new(&icon_path).exists() {
                     if let Ok(png_data) = convert_icns_to_png(&icon_path) {
-                        return Some(base64::encode(&png_data));
+                        return Some(base64::Engine::encode(
+                            &base64::engine::general_purpose::STANDARD,
+                            &png_data,
+                        ));
                     }
                 }
-                
+
                 // 如果指定的图标文件不存在，尝试常见的图标文件名
                 let common_icon_names = vec![
                     "App.icns".to_string(),
@@ -588,14 +614,17 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
                     "Icon.icns".to_string(),
                     "icon.icns".to_string(),
                     "AppIcon.icns".to_string(),
-                    "appicon.icns".to_string()
+                    "appicon.icns".to_string(),
                 ];
-                
+
                 for icon_name in &common_icon_names {
                     let fallback_icon_path = format!("{}{}", resources_path, icon_name);
                     if std::path::Path::new(&fallback_icon_path).exists() {
                         if let Ok(png_data) = convert_icns_to_png(&fallback_icon_path) {
-                            return Some(base64::encode(&png_data));
+                            return Some(base64::Engine::encode(
+                                &base64::engine::general_purpose::STANDARD,
+                                &png_data,
+                            ));
                         }
                     }
                 }
@@ -610,25 +639,32 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
 // macOS辅助函数：将ICNS转换为PNG
 #[cfg(target_os = "macos")]
 fn convert_icns_to_png(icns_path: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    use std::process::Command;
     use std::fs;
+    use std::io::{Read, Seek};
+    use std::process::Command;
     use tempfile::NamedTempFile;
-    use std::io::{Seek, Read};
 
     // 创建临时文件用于输出PNG
     let mut temp_file = NamedTempFile::new()?;
-    
+
     // 使用sips命令将ICNS转换为PNG
     let output = Command::new("sips")
         .args(&[
-            "-s", "format", "png",
+            "-s",
+            "format",
+            "png",
             icns_path,
-            "--out", temp_file.path().to_str().unwrap()
+            "--out",
+            temp_file.path().to_str().unwrap(),
         ])
         .output()?;
 
     if !output.status.success() {
-        return Err(format!("sips command failed: {}", String::from_utf8_lossy(&output.stderr)).into());
+        return Err(format!(
+            "sips command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
     }
 
     // 读取临时文件内容
@@ -650,10 +686,10 @@ fn get_process_icon_by_pid(_pid: u32) -> Option<String> {
 fn get_executable_path_from_pid(pid: u32) -> Result<String, Box<dyn std::error::Error>> {
     use std::ffi::OsString;
     use std::os::windows::ffi::OsStringExt;
-    use winapi::um::processthreadsapi::OpenProcess;
-    use winapi::um::handleapi::CloseHandle;
-    use winapi::um::winnt::PROCESS_QUERY_INFORMATION;
     use std::ptr;
+    use winapi::um::handleapi::CloseHandle;
+    use winapi::um::processthreadsapi::OpenProcess;
+    use winapi::um::winnt::PROCESS_QUERY_INFORMATION;
 
     unsafe {
         let handle = OpenProcess(PROCESS_QUERY_INFORMATION, 0, pid);
@@ -691,7 +727,7 @@ fn get_executable_path_from_pid(pid: u32) -> Result<String, Box<dyn std::error::
 
     // 在Unix-like系统上，可以通过/proc文件系统获取可执行文件路径
     let exe_path = format!("/proc/{}/exe", pid);
-    
+
     if Path::new(&exe_path).exists() {
         // 读取符号链接以获取可执行文件的实际路径
         let path = fs::read_link(&exe_path)?;
@@ -792,7 +828,7 @@ async fn get_connections() -> Result<Vec<TcpConnection>, String> {
                     start_time,
                     fill_column: String::new(), // 填充列，留空
                 });
-            },
+            }
             ProtocolSocketInfo::Udp(udp_si) => {
                 let protocol = "UDP".to_string();
 
@@ -881,7 +917,10 @@ async fn get_process_details(pid: u32) -> Result<ProcessDetails, String> {
             pid,
             name: process.name().to_string(),
             command_line: process.cmd().join(" "),
-            executable_path: process.exe().map(|path| path.to_string_lossy().to_string()).unwrap_or_default(),
+            executable_path: process
+                .exe()
+                .map(|path| path.to_string_lossy().to_string())
+                .unwrap_or_default(),
             memory_usage: process.memory(),
             cpu_usage: process.cpu_usage(),
             parent_pid: process.parent().map(|p| p.as_u32()),
@@ -924,11 +963,10 @@ async fn kill_process(pid: u32) -> Result<(), String> {
 
     #[cfg(windows)]
     {
-        use std::mem;
-        use winapi::um::processthreadsapi::OpenProcess;
         use winapi::um::handleapi::CloseHandle;
-        use winapi::um::winnt::PROCESS_TERMINATE;
+        use winapi::um::processthreadsapi::OpenProcess;
         use winapi::um::processthreadsapi::TerminateProcess;
+        use winapi::um::winnt::PROCESS_TERMINATE;
 
         unsafe {
             let handle = OpenProcess(PROCESS_TERMINATE, 0, pid);
@@ -1018,7 +1056,15 @@ fn greet(name: &str) -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, get_connections, get_process_details, kill_process, open_folder, get_app_version, update_window_theme])
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            get_connections,
+            get_process_details,
+            kill_process,
+            open_folder,
+            get_app_version,
+            update_window_theme
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

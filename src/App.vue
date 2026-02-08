@@ -473,7 +473,7 @@ async function toggleSort(
     | "state"
     | "start_time",
 ) {
-  // 在排序前重新获取最新连接数据
+  // 在排序前重新获取最新连接数据，确保排序基于最新数据
   await loadConnections();
 
   if (sortColumn.value === column) {
@@ -485,7 +485,7 @@ async function toggleSort(
     sortDirection.value = "asc";
   }
 
-  // 重新应用排序
+  // 重新应用排序（虽然loadConnections内部已经调用applySorting，但再次确保排序正确）
   applySorting();
 }
 

@@ -8,7 +8,7 @@
       <div class="modal-header">
         <div class="header-with-icon">
           <img
-            :src="processIcon ? 'data:image/png;base64,' + processIcon : '/src/assets/exe.svg'"
+            :src="processIcon ? 'data:image/png;base64,' + processIcon : '/exe.svg'"
             :alt="processDetails?.name || 'Process Icon'"
             class="process-icon-large"
           />

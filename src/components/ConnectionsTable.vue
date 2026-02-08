@@ -160,10 +160,9 @@
             }"
           >
             <td class="process-name-cell">
-              <div class="process-with-icon">
+              <div class="process-with-icon" :title="conn.process_name || '-'">
                 <img
-                  v-if="!isKernelProcess(conn.process_name)"
-                  :src="conn.icon ? 'data:image/png;base64,' + conn.icon : '/src/assets/exe.svg'"
+                  :src="conn.icon ? 'data:image/png;base64,' + conn.icon : '/exe.svg'"
                   :alt="conn.process_name || 'Process Icon'"
                   class="process-icon"
                 />
@@ -175,14 +174,14 @@
                 >
               </div>
             </td>
-            <td>{{ conn.pid || "-" }}</td>
-            <td>{{ conn.protocol }}</td>
-            <td>{{ conn.local_addr }}</td>
-            <td>{{ conn.local_port }}</td>
-            <td>{{ conn.remote_addr }}</td>
-            <td>{{ conn.remote_port }}</td>
-            <td>{{ conn.state }}</td>
-            <td>{{ formatDate(conn.start_time) }}</td>
+            <td :title="conn.pid ? conn.pid.toString() : '-'">{{ conn.pid || "-" }}</td>
+            <td :title="conn.protocol">{{ conn.protocol }}</td>
+            <td :title="conn.local_addr">{{ conn.local_addr }}</td>
+            <td :title="conn.local_port.toString()">{{ conn.local_port }}</td>
+            <td :title="conn.remote_addr">{{ conn.remote_addr }}</td>
+            <td :title="conn.remote_port.toString()">{{ conn.remote_port }}</td>
+            <td :title="conn.state">{{ conn.state }}</td>
+            <td :title="formatDate(conn.start_time)">{{ formatDate(conn.start_time) }}</td>
             <td class="filler-cell"></td>
           </tr>
         </tbody>
@@ -448,34 +447,34 @@ const applyCustomColumnWidths = () => {
           // 使用默认宽度
           switch (col) {
             case "process_name":
-              colWidth = 150; // 进程名称列较宽
+              colWidth = 200; // 进程名称列更宽，以容纳较长的进程名
               break;
             case "pid":
-              colWidth = 80; // PID列较窄
+              colWidth = 100; // PID列稍宽一些
               break;
             case "protocol":
-              colWidth = 60; // 协议列较窄
+              colWidth = 80; // 协议列稍宽一些
               break;
             case "local_addr":
-              colWidth = 120; // 本地地址列中等
+              colWidth = 150; // 本地地址列更宽，以容纳完整的IP地址
               break;
             case "local_port":
-              colWidth = 80; // 本地端口列较窄
+              colWidth = 100; // 本地端口列稍宽一些
               break;
             case "remote_addr":
-              colWidth = 120; // 远程地址列中等
+              colWidth = 150; // 远程地址列更宽，以容纳完整的IP地址
               break;
             case "remote_port":
-              colWidth = 80; // 远程端口列较窄
+              colWidth = 100; // 远程端口列稍宽一些
               break;
             case "state":
-              colWidth = 100; // 状态列中等
+              colWidth = 120; // 状态列稍宽一些
               break;
             case "start_time":
-              colWidth = 150; // 启动时间列较宽
+              colWidth = 180; // 启动时间列更宽，以容纳完整的时间戳
               break;
             default:
-              colWidth = 100; // 默认宽度
+              colWidth = 120; // 默认宽度稍宽一些
           }
         }
 
@@ -580,13 +579,13 @@ const formatDate = (timestamp: number | null): string => {
   flex: 1; /* 让表格填充可用空间 */
   min-height: 0; /* 允许内容收缩 */
   overflow-y: auto; /* 垂直滚动 */
-  min-width: max-content; /* 确保表格至少适应内容宽度 */
+  min-width: 100%; /* 确保表格至少占满容器宽度 */
   overflow-x: auto; /* 水平滚动，允许表格不完全填充容器 */
 }
 
 .connections-table {
   width: fit-content; /* 根据内容调整宽度 */
-  min-width: fit-content; /* 不强制占满容器宽度 */
+  min-width: 100%; /* 至少占满容器宽度，但可以更宽 */
   border-collapse: collapse;
   font-size: 0.85em; /* 略微减小字体以适应紧凑设计 */
   border: none;
@@ -595,7 +594,7 @@ const formatDate = (timestamp: number | null): string => {
   flex-shrink: 0; /* 防止表格被压缩 */
   margin-bottom: 0; /* 确保表格紧贴容器底部 */
   display: table; /* 使用表格显示 */
-  max-width: 100%; /* 限制表格最大宽度不超过容器 */
+  max-width: none; /* 不限制表格最大宽度，允许水平滚动 */
 }
 
 .connections-table thead tr {
@@ -627,6 +626,7 @@ const formatDate = (timestamp: number | null): string => {
   white-space: nowrap; /* 防止文本换行 */
   overflow: hidden; /* 防止内容溢出 */
   word-break: keep-all; /* 防止单词内断行 */
+  text-overflow: ellipsis; /* 超出部分显示省略号 */
 }
 
 .connections-table th {
@@ -655,6 +655,16 @@ const formatDate = (timestamp: number | null): string => {
 
 .connections-table tbody tr.selected-row td,
 .connections-table tbody tr.selected-row th {
+  color: white !important; /* 白色文字以提高对比度 */
+}
+
+/* 确保选中行样式具有足够高的特异性 */
+tbody tr.selected-row {
+  background-color: #3b82f6 !important; /* 蓝色背景 */
+}
+
+tbody tr.selected-row td,
+tbody tr.selected-row th {
   color: white !important; /* 白色文字以提高对比度 */
 }
 
@@ -694,35 +704,6 @@ const formatDate = (timestamp: number | null): string => {
   border-right: none; /* 最后一列不需要右边框 */
 }
 
-.grid-data-row:nth-of-type(even) {
-  background-color: #f8fafc;
-}
-
-.grid-data-row:nth-of-type(odd) {
-  background-color: #ffffff;
-}
-
-.grid-data-row:hover {
-  background-color: #f1f5f9;
-}
-
-.grid-data-row.selected-row {
-  background-color: #3b82f6 !important; /* 蓝色背景 */
-}
-
-.grid-data-row.selected-row .grid-data-cell {
-  color: white !important; /* 白色文字以提高对比度 */
-}
-
-/* 状态变化的连接项样式 */
-.grid-data-row.changed-connection {
-  background-color: #fbbf24 !important; /* 琥珀色背景表示状态变化 */
-  transition: background-color 3s ease; /* 3秒过渡效果 */
-}
-
-.grid-data-row.changed-connection .grid-data-cell {
-  color: #78350f !important; /* 深琥珀色文字 */
-}
 
 .column-header {
   display: flex;
@@ -849,6 +830,16 @@ const formatDate = (timestamp: number | null): string => {
 
 .dark .connections-table tbody tr.selected-row td,
 .dark .connections-table tbody tr.selected-row th {
+  color: #e2e8f0 !important; /* 浅灰蓝 */
+}
+
+/* 确保暗色模式下选中行样式具有足够高的特异性 */
+.dark tbody tr.selected-row {
+  background-color: #3c4bcb !important; /* 深蓝紫色 */
+}
+
+.dark tbody tr.selected-row td,
+.dark tbody tr.selected-row th {
   color: #e2e8f0 !important; /* 浅灰蓝 */
 }
 

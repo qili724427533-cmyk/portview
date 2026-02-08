@@ -8,6 +8,8 @@ use std::io::Cursor;
 use image;
 #[cfg(target_os = "windows")]
 use winapi::shared::windef::HICON;
+#[cfg(target_os = "macos")]
+use tauri::Manager;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TcpConnection {
@@ -323,24 +325,82 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
     use std::process::Command;
     use std::path::Path;
 
-    // 尝试通过PID获取进程名称
-    let proc_cmdline_path = format!("/proc/{}/cmdline", pid);
-    if let Ok(cmdline) = std::fs::read_to_string(proc_cmdline_path) {
-        // 提取进程名称
-        let process_name = cmdline.split('\0').next().unwrap_or("");
-        let basename = Path::new(process_name).file_stem()?.to_str()?;
+    // 尝试通过PID获取进程的可执行文件路径
+    let exe_path = format!("/proc/{}/exe", pid);
+    let process_name = if Path::new(&exe_path).exists() {
+        // 读取符号链接以获取可执行文件路径
+        std::fs::read_link(&exe_path)
+            .ok()?
+            .to_string_lossy()
+            .to_string()
+    } else {
+        // 如果无法读取exe链接，尝试从cmdline获取
+        let cmdline_path = format!("/proc/{}/cmdline", pid);
+        if let Ok(cmdline) = std::fs::read_to_string(&cmdline_path) {
+            cmdline.split('\0').next().unwrap_or("").to_string()
+        } else {
+            return None;
+        }
+    };
 
-        // 尝试在标准位置查找图标
-        let icon_paths = vec![
-            format!("/usr/share/icons/hicolor/32x32/apps/{}.png", basename),
-            format!("/usr/share/pixmaps/{}.png", basename),
-            format!("/usr/share/icons/gnome/32x32/apps/{}.png", basename),
-        ];
+    // 从可执行文件路径提取进程名
+    let basename = Path::new(&process_name)
+        .file_name()?
+        .to_string_lossy()
+        .to_string();
 
-        for icon_path in icon_paths {
-            if Path::new(&icon_path).exists() {
-                if let Ok(image_data) = std::fs::read(&icon_path) {
-                    return Some(base64::encode(&image_data));
+    // 尝试多种可能的图标路径
+    let icon_sizes = ["16x16", "24x24", "32x32", "48x48", "64x64", "128x128", "256x256", "scalable"];
+    let icon_themes = ["hicolor", "oxygen", "gnome", "breeze"];
+    let icon_types = ["apps", "categories", "devices", "mimetypes"];
+
+    // 首先尝试桌面文件中指定的图标
+    let desktop_file_path = format!("/usr/share/applications/{}.desktop", &basename);
+    if Path::new(&desktop_file_path).exists() {
+        if let Ok(desktop_content) = std::fs::read_to_string(&desktop_file_path) {
+            for line in desktop_content.lines() {
+                if line.starts_with("Icon=") {
+                    let icon_name = line.strip_prefix("Icon=").unwrap_or("");
+                    if !icon_name.is_empty() {
+                        // 尝试查找该图标名称
+                        for size in &icon_sizes {
+                            for theme in &icon_themes {
+                                for icon_type in &icon_types {
+                                    let icon_path = format!(
+                                        "/usr/share/icons/{}/{}/{}/{}.png",
+                                        theme, size, icon_type, icon_name
+                                    );
+                                    if Path::new(&icon_path).exists() {
+                                        if let Ok(image_data) = std::fs::read(&icon_path) {
+                                            return Some(base64::encode(&image_data));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 如果桌面文件没有帮助，尝试基于进程名查找图标
+    for size in &icon_sizes {
+        for theme in &icon_themes {
+            for icon_type in &icon_types {
+                let icon_paths = vec![
+                    format!("/usr/share/icons/{}/{}/{}/{}.png", theme, size, icon_type, &basename),
+                    format!("/usr/share/icons/{}/{}/{}/{}.svg", theme, size, icon_type, &basename),
+                    format!("/usr/share/pixmaps/{}.png", &basename),
+                    format!("/usr/share/pixmaps/{}.svg", &basename),
+                ];
+
+                for icon_path in icon_paths {
+                    if Path::new(&icon_path).exists() {
+                        if let Ok(image_data) = std::fs::read(&icon_path) {
+                            return Some(base64::encode(&image_data));
+                        }
+                    }
                 }
             }
         }
@@ -353,61 +413,230 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
 fn get_process_icon_by_pid(pid: u32) -> Option<String> {
     use std::process::Command;
 
-    // 使用osascript获取macOS应用程序图标
-    // 这里使用AppleScript查询活动应用程序的图标
-    let output = Command::new("osascript")
-        .args(&[
-            "-e",
-            &format!("tell application \"System Events\" to POSIX path of (application file id (id of process id {}) whose frontmost is true)'s icon file)", pid)
-        ])
+    // 首先尝试使用lsof命令获取进程的可执行文件路径
+    let lsof_output = Command::new("lsof")
+        .args(&["-p", &pid.to_string(), "-F", "n"])
         .output()
         .ok()?;
 
-    if output.status.success() {
-        let icon_path = String::from_utf8(output.stdout).ok()?;
-        let icon_path = icon_path.trim();
-
-        if std::path::Path::new(icon_path).exists() {
-            if let Ok(image_data) = std::fs::read(icon_path) {
-                return Some(base64::encode(&image_data));
-            }
-        }
+    if !lsof_output.status.success() {
+        return None;
     }
 
-    // 如果上述方法失败，尝试使用sips工具从.app包中提取图标
-    // 获取进程信息
-    let ps_output = Command::new("ps")
-        .args(&["-o", "comm=", "-p", &pid.to_string()])
-        .output()
-        .ok()?;
+    let lsof_stdout = String::from_utf8(lsof_output.stdout).ok()?;
+    let executable_path = lsof_stdout
+        .lines()
+        .find(|line| line.starts_with('n') && (line.contains("/Contents/MacOS/") || line.contains(".app")))
+        .map(|line| line[1..].to_string()); // 移除'n'前缀
 
-    if ps_output.status.success() {
-        let process_name = String::from_utf8(ps_output.stdout).ok()?;
-        let process_name = process_name.trim();
+    // 如果找到了.app包路径，构建对应的Resources路径
+    if let Some(path) = executable_path {
+        if path.contains("/Contents/MacOS/") {
+            // 从可执行文件路径推导出Resources路径
+            if let Some(contents_index) = path.find("/Contents/MacOS/") {
+                let resources_path = format!("{}{}", 
+                    &path[..contents_index], 
+                    "/Contents/Resources/");
+                
+                // 尝试找到Info.plist来确定主图标文件名
+                let info_plist_path = format!("{}{}", resources_path, "Info.plist");
+                
+                // 默认图标名称
+                let mut icon_name = "App.icns".to_string();
+                
+                // 尝试从Info.plist中读取CFBundleIconFile
+                if std::path::Path::new(&info_plist_path).exists() {
+                    if let Ok(plist_content) = std::fs::read_to_string(&info_plist_path) {
+                        // 简单解析plist文件查找图标名称
+                        if let Some(start) = plist_content.find("<key>CFBundleIconFile</key>") {
+                            if let Some(content_start) = plist_content[start..].find("<string>").map(|i| start + i + 8) {
+                                if let Some(content_end) = plist_content[content_start..].find("</string>").map(|i| content_start + i) {
+                                    let extracted_icon_name = &plist_content[content_start..content_end];
+                                    if !extracted_icon_name.is_empty() {
+                                        icon_name = extracted_icon_name.to_string();
+                                        
+                                        // 确保图标文件有.icns扩展名
+                                        if !icon_name.ends_with(".icns") {
+                                            icon_name.push_str(".icns");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // 如果上面没找到，尝试找SF Bundle Icons
+                        if icon_name == "App.icns" {
+                            if let Some(start) = plist_content.find("<key>CFBundleIcons</key>") {
+                                if let Some(key_pos) = plist_content[start..].find("<key>CFBundleIconFile</key>").map(|i| start + i) {
+                                    if let Some(content_start) = plist_content[key_pos..].find("<string>").map(|i| key_pos + i + 8) {
+                                        if let Some(content_end) = plist_content[content_start..].find("</string>").map(|i| content_start + i) {
+                                            let extracted_icon_name = &plist_content[content_start..content_end];
+                                            if !extracted_icon_name.is_empty() {
+                                                icon_name = extracted_icon_name.to_string();
+                                                
+                                                // 确保图标文件有.icns扩展名
+                                                if !icon_name.ends_with(".icns") {
+                                                    icon_name.push_str(".icns");
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                let icon_path = format!("{}{}", resources_path, icon_name);
+                if std::path::Path::new(&icon_path).exists() {
+                    // 尝试使用sips将icns转换为png
+                    if let Ok(png_data) = convert_icns_to_png(&icon_path) {
+                        return Some(base64::encode(&png_data));
+                    }
+                }
+                
+                // 如果指定的图标文件不存在，尝试常见的图标文件名
+                let common_icon_names = vec![
+                    "App.icns".to_string(),
+                    "app.icns".to_string(),
+                    format!("{}.icns", icon_name.replace(".icns", "")),
+                    "Icon.icns".to_string(),
+                    "icon.icns".to_string(),
+                    "AppIcon.icns".to_string(),
+                    "appicon.icns".to_string()
+                ];
+                
+                for icon_name in &common_icon_names {
+                    let fallback_icon_path = format!("{}{}", resources_path, icon_name);
+                    if std::path::Path::new(&fallback_icon_path).exists() {
+                        if let Ok(png_data) = convert_icns_to_png(&fallback_icon_path) {
+                            return Some(base64::encode(&png_data));
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        // 如果无法从lsof获取.app路径，尝试使用ps命令获取进程名并查找应用
+        let ps_output = Command::new("ps")
+            .args(&["-o", "comm=", "-p", &pid.to_string()])
+            .output()
+            .ok()?;
 
-        // 尝试在/Applications目录下查找.app包
-        let app_path = format!("/Applications/{}.app/Contents/Resources/{}Icon.icns", 
-                              process_name.replace("/", ""), 
-                              process_name.replace("/", "").split_whitespace().next().unwrap_or(""));
+        if !ps_output.status.success() {
+            return None;
+        }
 
-        if std::path::Path::new(&app_path).exists() {
-            // 使用sips将icns转换为png
-            let sips_output = Command::new("sips")
-                .args(&["-s", "format", "png", &app_path, "--out", "/tmp/tmp_icon.png"])
-                .output()
-                .ok()?;
+        let raw_process_name = String::from_utf8(ps_output.stdout).ok()?;
+        let process_name = raw_process_name.trim();
+        
+        // 提取进程名（去除路径）
+        let clean_process_name = process_name
+            .rsplit('/')
+            .next()
+            .unwrap_or(process_name)
+            .trim();
 
-            if sips_output.status.success() {
-                if let Ok(image_data) = std::fs::read("/tmp/tmp_icon.png") {
-                    // 删除临时文件
-                    let _ = std::fs::remove_file("/tmp/tmp_icon.png");
-                    return Some(base64::encode(&image_data));
+        // 尝试在多个位置查找.app包
+        let app_paths = [
+            format!("/Applications/{}.app", clean_process_name),
+            format!("/Applications/{}/{}.app", clean_process_name, clean_process_name),
+            format!("/System/Applications/{}.app", clean_process_name),
+            format!("/System/Applications/{}/{}.app", clean_process_name, clean_process_name),
+            format!("/Users/Shared/Applications/{}.app", clean_process_name),
+        ];
+
+        for app_path in &app_paths {
+            if std::path::Path::new(app_path).exists() {
+                // 尝试从Info.plist获取图标名
+                let info_plist_path = format!("{}/Contents/Resources/Info.plist", app_path);
+                let mut icon_name = "App.icns".to_string();
+                
+                if std::path::Path::new(&info_plist_path).exists() {
+                    if let Ok(plist_content) = std::fs::read_to_string(&info_plist_path) {
+                        if let Some(start) = plist_content.find("<key>CFBundleIconFile</key>") {
+                            if let Some(content_start) = plist_content[start..].find("<string>").map(|i| start + i + 8) {
+                                if let Some(content_end) = plist_content[content_start..].find("</string>").map(|i| content_start + i) {
+                                    let extracted_icon_name = &plist_content[content_start..content_end];
+                                    if !extracted_icon_name.is_empty() {
+                                        icon_name = extracted_icon_name.to_string();
+                                        
+                                        // 确保图标文件有.icns扩展名
+                                        if !icon_name.ends_with(".icns") {
+                                            icon_name.push_str(".icns");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let resources_path = format!("{}/Contents/Resources/", app_path);
+                let icon_path = format!("{}{}", resources_path, icon_name);
+                if std::path::Path::new(&icon_path).exists() {
+                    if let Ok(png_data) = convert_icns_to_png(&icon_path) {
+                        return Some(base64::encode(&png_data));
+                    }
+                }
+                
+                // 如果指定的图标文件不存在，尝试常见的图标文件名
+                let common_icon_names = vec![
+                    "App.icns".to_string(),
+                    "app.icns".to_string(),
+                    format!("{}.icns", icon_name.replace(".icns", "")),
+                    "Icon.icns".to_string(),
+                    "icon.icns".to_string(),
+                    "AppIcon.icns".to_string(),
+                    "appicon.icns".to_string()
+                ];
+                
+                for icon_name in &common_icon_names {
+                    let fallback_icon_path = format!("{}{}", resources_path, icon_name);
+                    if std::path::Path::new(&fallback_icon_path).exists() {
+                        if let Ok(png_data) = convert_icns_to_png(&fallback_icon_path) {
+                            return Some(base64::encode(&png_data));
+                        }
+                    }
                 }
             }
         }
     }
 
+    // 如果找不到应用图标，尝试使用系统默认方法
     None
+}
+
+// macOS辅助函数：将ICNS转换为PNG
+#[cfg(target_os = "macos")]
+fn convert_icns_to_png(icns_path: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    use std::process::Command;
+    use std::fs;
+    use tempfile::NamedTempFile;
+    use std::io::{Seek, Read};
+
+    // 创建临时文件用于输出PNG
+    let mut temp_file = NamedTempFile::new()?;
+    
+    // 使用sips命令将ICNS转换为PNG
+    let output = Command::new("sips")
+        .args(&[
+            "-s", "format", "png",
+            icns_path,
+            "--out", temp_file.path().to_str().unwrap()
+        ])
+        .output()?;
+
+    if !output.status.success() {
+        return Err(format!("sips command failed: {}", String::from_utf8_lossy(&output.stderr)).into());
+    }
+
+    // 读取临时文件内容
+    temp_file.seek(std::io::SeekFrom::Start(0))?;
+    let mut png_data = Vec::new();
+    std::io::Read::read_to_end(&mut temp_file, &mut png_data)?;
+
+    Ok(png_data)
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
@@ -456,9 +685,21 @@ fn get_executable_path_from_pid(pid: u32) -> Result<String, Box<dyn std::error::
 }
 
 #[cfg(not(target_os = "windows"))]
-fn get_executable_path_from_pid(_pid: u32) -> Result<String, Box<dyn std::error::Error>> {
-    // 非Windows平台暂时不实现
-    Ok(String::new())
+fn get_executable_path_from_pid(pid: u32) -> Result<String, Box<dyn std::error::Error>> {
+    use std::fs;
+    use std::path::Path;
+
+    // 在Unix-like系统上，可以通过/proc文件系统获取可执行文件路径
+    let exe_path = format!("/proc/{}/exe", pid);
+    
+    if Path::new(&exe_path).exists() {
+        // 读取符号链接以获取可执行文件的实际路径
+        let path = fs::read_link(&exe_path)?;
+        Ok(path.to_string_lossy().to_string())
+    } else {
+        // 如果无法读取/proc/<pid>/exe，返回错误
+        Err(format!("Could not read executable path for PID {}", pid).into())
+    }
 }
 
 // 获取系统网络连接列表
@@ -476,7 +717,8 @@ async fn get_connections() -> Result<Vec<TcpConnection>, String> {
 
     // 创建系统信息实例以获取进程名称
     let mut system = System::new_all();
-    system.refresh_processes();
+    // 刷新所有系统信息，确保获取最完整的进程列表
+    system.refresh_all();
 
     for si in sockets_info {
         match si.protocol_socket_info {
@@ -506,7 +748,7 @@ async fn get_connections() -> Result<Vec<TcpConnection>, String> {
                     if let Some(process) = system.process((pid_val as usize).into()) {
                         Some(process.name().to_string())
                     } else {
-                        // 如果无法获取进程信息，可能是内核进程，显示特殊标识
+                        // 如果无法获取进程信息，可能是内核进程或权限不足，显示特殊标识
                         Some("[KERNEL]".to_string())
                     }
                 } else {
@@ -577,7 +819,7 @@ async fn get_connections() -> Result<Vec<TcpConnection>, String> {
                     if let Some(process) = system.process((pid_val as usize).into()) {
                         Some(process.name().to_string())
                     } else {
-                        // 如果无法获取进程信息，可能是内核进程，显示特殊标识
+                        // 如果无法获取进程信息，可能是内核进程或权限不足，显示特殊标识
                         Some("[KERNEL]".to_string())
                     }
                 } else {
@@ -751,6 +993,14 @@ async fn open_folder(path: String) -> Result<(), String> {
     Ok(())
 }
 
+// 更新窗口主题的备用实现（当平台特定代码不可用时）
+#[tauri::command]
+async fn update_window_theme(_window: tauri::Window, _is_dark_mode: bool) -> Result<(), String> {
+    // 目前，由于平台API限制，我们无法动态更改原生窗口标题栏的外观
+    // 这是一个占位符函数，用于前端调用，但不执行任何操作
+    Ok(())
+}
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -761,7 +1011,7 @@ fn greet(name: &str) -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet, get_connections, get_process_details, kill_process, open_folder])
+        .invoke_handler(tauri::generate_handler![greet, get_connections, get_process_details, kill_process, open_folder, update_window_theme])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

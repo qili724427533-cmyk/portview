@@ -523,7 +523,7 @@ const handleThemeToggle = () => {
 /* 暗色主题样式 */
 .dark .main-menu-container {
   background-color: #1a202c; /* 深灰蓝 */
-  color: #a0aec0; /* 中等亮度的灰蓝 */
+  color: #a0aec0; /* 中等亮度的灰蓝，确保可读性 */
   border-bottom: 2px solid #2d3748; /* 深中灰蓝 */
 }
 

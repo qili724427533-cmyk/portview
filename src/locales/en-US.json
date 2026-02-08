@@ -31,7 +31,8 @@
     "autoRefresh": "Auto Refresh:",
     "refreshStart": "Start",
     "refreshStop": "Stop",
-    "refreshInterval": "sec"
+    "refreshInterval": "sec",
+    "about": "About"
   },
   "tableHeaders": {
     "processName": "Process Name",
@@ -82,5 +83,16 @@
     "openFolderFailed": "Failed to open folder: {error}",
     "noExecutablePath": "Process {name} has no executable path",
     "connectionStateChanged": "Detected {count} connection(s) with state changes"
+  },
+  "about": {
+    "title": "About PortView",
+    "appName": "Application Name",
+    "version": "Version",
+    "description": "Description",
+    "descriptionText": "PortView is a cross-platform network connection monitoring tool that displays TCP/UDP connections in real-time.",
+    "author": "Author",
+    "github": "GitHub",
+    "githubLink": "https://github.com/vcyang/portview",
+    "okButton": "OK"
   }
 }

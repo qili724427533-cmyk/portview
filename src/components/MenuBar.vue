@@ -121,6 +121,15 @@
         {{ isDarkMode ? t("menu.lightTheme") : t("menu.darkTheme") }}
       </button>
     </div>
+    <div class="menu-group">
+      <button
+        class="about-btn"
+        @click="showAboutDialog"
+        :title="t('menu.about')"
+      >
+        {{ t("menu.about") }}
+      </button>
+    </div>
   </div>
 </template>
 
@@ -154,6 +163,7 @@ interface Emits {
   (e: "changeLanguage", lang: "zh" | "en"): void;
   (e: "toggleTheme"): void;
   (e: "setProtocolFilter", protocol: "all" | "TCP" | "UDP"): void;
+  (e: "showAboutDialog"): void;
 }
 
 const emit = defineEmits<Emits>();
@@ -188,6 +198,10 @@ const changeLanguage = (lang: "zh" | "en") => {
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const toggleTheme = () => {
   emit('toggleTheme');
+};
+
+const showAboutDialog = () => {
+  emit('showAboutDialog');
 };
 
 const handleStateChange = (event: Event) => {
@@ -457,6 +471,53 @@ const handleThemeToggle = () => {
   background-color: #f1f5f9;
   border-color: #94a3b8;
   color: #334155;
+}
+
+/* 暗色主题样式 */
+.dark .theme-toggle-btn {
+  background-color: #2d3748; /* 深中灰蓝 */
+  color: #a0aec0; /* 中等亮度的灰蓝 */
+  border: 1px solid #4a5568; /* 中灰蓝 */
+}
+
+.dark .theme-toggle-btn:hover {
+  background-color: #4a5568; /* 中灰蓝 */
+  border-color: #718096; /* 浅中灰 */
+  color: #e2e8f0; /* 浅灰蓝 */
+}
+
+/* 关于按钮样式 */
+.about-btn {
+  padding: 3px 8px;
+  border: 1px solid #cbd5e1;
+  background-color: #e2e8f0;
+  color: #475569;
+  font-size: 0.75rem;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: fit-content;
+  text-align: center;
+  font-weight: 500;
+}
+
+.about-btn:hover {
+  background-color: #f1f5f9;
+  border-color: #94a3b8;
+  color: #334155;
+}
+
+/* 暗色主题样式 */
+.dark .about-btn {
+  background-color: #2d3748; /* 深中灰蓝 */
+  color: #a0aec0; /* 中等亮度的灰蓝 */
+  border: 1px solid #4a5568; /* 中灰蓝 */
+}
+
+.dark .about-btn:hover {
+  background-color: #4a5568; /* 中灰蓝 */
+  border-color: #718096; /* 浅中灰 */
+  color: #e2e8f0; /* 浅灰蓝 */
 }
 
 /* 暗色主题样式 */

@@ -7,6 +7,7 @@ import MenuBar from "./components/MenuBar.vue";
 import StatusBar from "./components/StatusBar.vue";
 import ContextMenu from "./components/ContextMenu.vue";
 import ProcessDetailsModal from "./components/ProcessDetailsModal.vue";
+import AboutDialog from "./components/AboutDialog.vue";
 
 // 定义连接数据类型
 interface TcpConnection {
@@ -64,6 +65,9 @@ const clickedConnection = ref<TcpConnection | null>(null);
 // 进程详情弹窗相关状态
 const showProcessDetails = ref(false);
 const processDetails = ref<ProcessDetails | null>(null);
+
+// 关于对话框相关状态
+const showAbout = ref(false);
 
 // 通知提示相关状态
 const showNotificationBox = ref(false);
@@ -661,6 +665,7 @@ function checkSystemThemePreference() {
       @changeLanguage="changeLanguage"
       @toggleTheme="toggleTheme"
       @setProtocolFilter="setProtocolFilter"
+      @showAboutDialog="showAbout = true"
     />
 
     <!-- 表格 -->
@@ -698,17 +703,23 @@ function checkSystemThemePreference() {
       :processIcon="selectedConnection?.icon || null"
       @update:showProcessDetails="showProcessDetails = $event"
     />
-    
+
+    <!-- 关于对话框 -->
+    <AboutDialog
+      :showAbout="showAbout"
+      @update:showAbout="showAbout = $event"
+    />
+
     <!-- 通知提示框 -->
-    <div 
-      v-if="showNotificationBox" 
+    <div
+      v-if="showNotificationBox"
       class="notification-box"
       :class="[notificationType, isDarkMode ? 'dark' : '']"
     >
       <div class="notification-content">
         <span class="notification-message">{{ notificationMessage }}</span>
-        <button 
-          class="notification-close-btn" 
+        <button
+          class="notification-close-btn"
           @click="showNotificationBox = false"
         >
           ×

@@ -139,7 +139,7 @@ interface Props {
   isDarkMode: boolean;
 }
 
-const props = defineProps<Props>();
+defineProps<Props>();
 
 // 定义事件发射器
 interface Emits {
@@ -166,6 +166,7 @@ const setProtocolFilter = (protocol: "all" | "TCP" | "UDP") => {
   emit('setProtocolFilter', protocol);
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const applyFiltersAndSearch = () => {
   emit('applyFiltersAndSearch');
 };
@@ -174,14 +175,17 @@ const toggleAutoRefresh = () => {
   emit('toggleAutoRefresh');
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const changeRefreshInterval = (interval: number) => {
   emit('changeRefreshInterval', interval);
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const changeLanguage = (lang: "zh" | "en") => {
   emit('changeLanguage', lang);
 };
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const toggleTheme = () => {
   emit('toggleTheme');
 };

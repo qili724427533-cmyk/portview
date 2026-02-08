@@ -695,7 +695,7 @@ function checkSystemThemePreference() {
     <ProcessDetailsModal
       :showProcessDetails="showProcessDetails"
       :processDetails="processDetails"
-      :processIcon="selectedConnection?.icon"
+      :processIcon="selectedConnection?.icon || null"
       @update:showProcessDetails="showProcessDetails = $event"
     />
     

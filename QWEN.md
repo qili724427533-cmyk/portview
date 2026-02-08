@@ -1,8 +1,8 @@
-# TCPView Project Context
+# PortView Project Context
 
 ## Project Overview
 
-This is a cross-platform desktop application called "TCPView" built using the Tauri framework. It combines:
+This is a cross-platform desktop application called "PortView" built using the Tauri framework. It combines:
 - **Frontend**: Vue 3 with TypeScript, using Vite as the build tool
 - **Backend**: Rust for system-level operations (specifically for network connection monitoring)
 - **Architecture**: Tauri enables the combination of web technologies (Vue) with Rust for native desktop applications

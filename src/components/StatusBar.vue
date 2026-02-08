@@ -90,7 +90,7 @@ interface Props {
   statusBarInfo: StatusBarInfo;
 }
 
-const props = defineProps<Props>();
+defineProps<Props>();
 
 // 使用国际化
 const { t } = useI18n();

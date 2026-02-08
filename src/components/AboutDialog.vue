@@ -15,7 +15,7 @@
           <p><strong>{{ t("about.description") }}:</strong> {{ t("about.descriptionText") }}</p>
           <p><strong>{{ t("about.author") }}:</strong> vcyang</p>
           <p><strong>{{ t("about.github") }}:</strong> 
-            <a href="#" @click.prevent="openGitHub">{{ t("about.githubLink") }}</a>
+            <a href="#" @click.prevent="openGitHub"> {{ t("about.githubLink") }}</a>
           </p>
         </div>
       </div>

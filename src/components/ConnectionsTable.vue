@@ -157,6 +157,8 @@
             :class="{
               'selected-row': clickedConnection === conn,
               'changed-connection': conn.hasChanged,
+              'new-connection': conn.isNew,
+              'deleted-connection': conn.isDeleted,
             }"
           >
             <td class="process-name-cell">
@@ -208,7 +210,8 @@ export interface TcpConnection {
   start_time: number | null; // Process start time in seconds since Unix epoch
   fill_column: string; // Fill column for filling remaining space
   isNew?: boolean; // 标记是否为新连接
-  hasChanged?: boolean; // 标记连接是否有变化
+  hasChanged?: boolean; // 标记连接状态是否有变化
+  isDeleted?: boolean; // 标记是否为即将删除的连接
 }
 
 // 定义组件属性
@@ -668,15 +671,39 @@ tbody tr.selected-row th {
   color: white !important; /* 白色文字以提高对比度 */
 }
 
+/* 新增连接项样式 */
+.connections-table tbody tr.new-connection {
+  background-color: #4ade80 !important; /* 绿色背景表示新增连接 */
+  transition: background-color 2s ease; /* 2秒过渡效果 */
+}
+
+.connections-table tbody tr.new-connection td,
+.connections-table tbody tr.new-connection th {
+  color: #166534 !important; /* 深绿色文字 */
+}
+
 /* 状态变化的连接项样式 */
 .connections-table tbody tr.changed-connection {
   background-color: #fbbf24 !important; /* 琥珀色背景表示状态变化 */
-  transition: background-color 3s ease; /* 3秒过渡效果 */
+  transition: background-color 2s ease; /* 2秒过渡效果 */
 }
 
 .connections-table tbody tr.changed-connection td,
 .connections-table tbody tr.changed-connection th {
   color: #78350f !important; /* 深琥珀色文字 */
+}
+
+/* 即将删除的连接项样式 */
+.connections-table tbody tr.deleted-connection {
+  background-color: #f87171 !important; /* 红色背景表示即将删除的连接 */
+  transition: background-color 2s ease; /* 2秒过渡效果 */
+  opacity: 0.7; /* 稍微透明表示即将删除 */
+}
+
+.connections-table tbody tr.deleted-connection td,
+.connections-table tbody tr.deleted-connection th {
+  color: #991b1b !important; /* 深红色文字 */
+  text-decoration: line-through; /* 删除线效果 */
 }
 
 /* 为除了最后一列之外的所有列添加右边框作为分割线 */
@@ -843,6 +870,16 @@ tbody tr.selected-row th {
   color: #e2e8f0 !important; /* 浅灰蓝 */
 }
 
+/* 新增连接项在暗色主题下的样式 */
+.dark .connections-table tbody tr.new-connection {
+  background-color: #166534 !important; /* 深绿色 */
+}
+
+.dark .connections-table tbody tr.new-connection td,
+.dark .connections-table tbody tr.new-connection th {
+  color: #a7f3d0 !important; /* 浅绿色 */
+}
+
 /* 状态变化的连接项在暗色主题下的样式 */
 .dark .connections-table tbody tr.changed-connection {
   background-color: #b7791f !important; /* 深金黄色 */
@@ -851,6 +888,18 @@ tbody tr.selected-row th {
 .dark .connections-table tbody tr.changed-connection td,
 .dark .connections-table tbody tr.changed-connection th {
   color: #e2e8f0 !important; /* 浅灰蓝 */
+}
+
+/* 即将删除的连接项在暗色主题下的样式 */
+.dark .connections-table tbody tr.deleted-connection {
+  background-color: #991b1b !important; /* 深红色 */
+  opacity: 0.7; /* 稍微透明表示即将删除 */
+}
+
+.dark .connections-table tbody tr.deleted-connection td,
+.dark .connections-table tbody tr.deleted-connection th {
+  color: #fca5a5 !important; /* 浅红色 */
+  text-decoration: line-through; /* 删除线效果 */
 }
 
 /* 内核进程在暗色主题下的样式 */

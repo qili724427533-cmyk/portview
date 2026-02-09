@@ -212,17 +212,32 @@ const formatDate = (timestamp: number | null): string => {
 .close-button {
   background: #ef4444; /* 红色背景 */
   border: none;
-  font-size: 20px; /* 稍微减小字体 */
+  font-size: 16px; /* 调整字体大小 */
   cursor: pointer;
   color: white; /* 白色文字 */
   padding: 0;
   width: 24px;
   height: 24px;
+  border-radius: 50%; /* 圆形 */
+  font-weight: bold;
+  box-sizing: border-box;
+  margin: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%; /* 圆形 */
-  line-height: 1; /* 调整垂直对齐 */
+  position: relative;
+  line-height: normal; /* 重置line-height */
+}
+.close-button::after {
+  content: '×';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none; /* 确保伪元素不影响交互 */
+}
+.close-button > * {
+  visibility: hidden; /* 隐藏实际内容 */
 }
 
 .close-button:hover {

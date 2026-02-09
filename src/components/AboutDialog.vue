@@ -3,7 +3,7 @@
     <div class="about-modal">
       <div class="about-header">
         <h2>{{ t("about.title") }}</h2>
-        <button class="close-btn" @click="closeAbout">&times;</button>
+        <button class="close-btn" @click="closeAbout">×</button>
       </div>
       <div class="about-content">
         <div class="app-logo-container">
@@ -100,16 +100,32 @@ const openGitHub = async () => {
 .close-btn {
   background: none;
   border: none;
-  font-size: 1.5rem;
+  font-size: 18px; /* 调整字体大小 */
   cursor: pointer;
   color: #ef4444; /* 红色 */
   padding: 0;
   width: 30px;
   height: 30px;
+  border-radius: 50%;
+  font-weight: bold;
+  box-sizing: border-box;
+  margin: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  position: relative;
+  line-height: normal; /* 重置line-height */
+}
+.close-btn::after {
+  content: '×';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none; /* 确保伪元素不影响交互 */
+}
+.close-btn > * {
+  visibility: hidden; /* 隐藏实际内容 */
 }
 
 .close-btn:hover {

@@ -23,7 +23,8 @@ interface TcpConnection {
   start_time: number | null; // Process start time in seconds since Unix epoch
   fill_column: string; // Fill column for filling remaining space
   isNew?: boolean; // 标记是否为新连接
-  hasChanged?: boolean; // 标记连接是否有变化
+  hasChanged?: boolean; // 标记连接状态是否有变化
+  isDeleted?: boolean; // 标记是否为即将删除的连接
 }
 
 // 定义进程详情类型
@@ -48,6 +49,7 @@ const refreshInterval = ref<number | null>(null);
 const autoRefreshInterval = ref<number | null>(null);
 const isAutoRefreshEnabled = ref(false);
 const refreshIntervals = [1, 2, 3, 5, 10]; // 可选的刷新间隔（秒）
+const isFirstLoad = ref(true); // 标记是否是首次加载
 
 const selectedRefreshInterval = ref(1); // 默认选择1秒
 
@@ -122,8 +124,8 @@ async function loadConnections() {
   try {
     const result: TcpConnection[] = await invoke("get_connections");
 
-    // 保存当前连接列表的副本用于比较
-    const previousConnections = [...connections.value];
+    // 保存当前连接列表的副本用于比较, clearing any previous change markers
+    const previousConnections = connections.value.map(conn => ({...conn, hasChanged: undefined}));
 
     // 应用筛选条件
     let filteredResult = result;
@@ -169,25 +171,63 @@ async function loadConnections() {
       });
     }
 
-    // 标记状态变化的连接
+    // 生成当前连接的唯一标识符集合
+    const currentConnIds = new Set();
     filteredResult.forEach((conn) => {
-      // 生成唯一标识符用于比较
       const connId = `${conn.protocol}-${conn.local_addr}-${conn.local_port}-${conn.remote_addr}-${conn.remote_port}-${conn.pid || "null"}`;
+      currentConnIds.add(connId);
+    });
 
-      // 查找匹配的旧连接
-      const matchingPrevConn = previousConnections.find((prevConn) => {
-        const prevConnId = `${prevConn.protocol}-${prevConn.local_addr}-${prevConn.local_port}-${prevConn.remote_addr}-${prevConn.remote_port}-${prevConn.pid || "null"}`;
-        return prevConnId === connId;
+    // 生成上一次连接的唯一标识符集合
+    const previousConnIds = new Set();
+    previousConnections.forEach((conn) => {
+      const connId = `${conn.protocol}-${conn.local_addr}-${conn.local_port}-${conn.remote_addr}-${conn.remote_port}-${conn.pid || "null"}`;
+      previousConnIds.add(connId);
+    });
+
+    // 标记状态变化的连接（仅在非首次加载时）
+    if (!isFirstLoad.value) {
+      filteredResult.forEach((conn) => {
+        // 生成唯一标识符用于比较
+        const connId = `${conn.protocol}-${conn.local_addr}-${conn.local_port}-${conn.remote_addr}-${conn.remote_port}-${conn.pid || "null"}`;
+
+        // 查找匹配的旧连接
+        const matchingPrevConn = previousConnections.find((prevConn) => {
+          const prevConnId = `${prevConn.protocol}-${prevConn.local_addr}-${prevConn.local_port}-${prevConn.remote_addr}-${prevConn.remote_port}-${prevConn.pid || "null"}`;
+          return prevConnId === connId;
+        });
+
+        // 如果找到了匹配的连接，检查状态是否发生了变化
+        if (matchingPrevConn) {
+          conn.hasChanged = matchingPrevConn.state !== conn.state;
+          conn.isNew = false; // 不是新连接
+        } else {
+          // 如果没有找到匹配的连接，这是新连接
+          conn.isNew = true;
+          conn.hasChanged = false;
+        }
       });
 
-      // 如果找到了匹配的连接，检查状态是否发生了变化
-      if (matchingPrevConn) {
-        conn.hasChanged = matchingPrevConn.state !== conn.state;
-      } else {
-        // 如果没有找到匹配的连接，不标记任何状态
+      // 标记被删除的连接
+      previousConnections.forEach((prevConn) => {
+        const prevConnId = `${prevConn.protocol}-${prevConn.local_addr}-${prevConn.local_port}-${prevConn.remote_addr}-${prevConn.remote_port}-${prevConn.pid || "null"}`;
+        
+        // 如果当前连接列表中没有这个连接，则它是被删除的连接
+        if (!currentConnIds.has(prevConnId)) {
+          // 创建一个标记为删除的连接对象
+          const deletedConn = { ...prevConn, isDeleted: true };
+          // 添加到当前连接列表中，以便在界面上显示
+          filteredResult.push(deletedConn);
+        }
+      });
+    } else {
+      // 首次加载时，不标记任何连接为新增或删除
+      filteredResult.forEach((conn) => {
+        conn.isNew = false;
         conn.hasChanged = false;
-      }
-    });
+        conn.isDeleted = false;
+      });
+    }
 
     // 检查是否有连接状态发生了变化
     const changedConnections = filteredResult.filter((conn) => conn.hasChanged);
@@ -210,21 +250,28 @@ async function loadConnections() {
       );
     }
 
-    connections.value = filteredResult;
-
     // 更新状态栏信息
     updateStatusBarInfo(result); // 注意：这里仍然使用原始结果更新状态栏
 
     // 应用排序
     applySorting();
 
-    // 3秒后移除变化标记
-    setTimeout(() => {
-      connections.value = connections.value.map((conn) => ({
-        ...conn,
-        hasChanged: false,
-      }));
-    }, 3000);
+    // 标记不再是首次加载
+    isFirstLoad.value = false;
+
+    // 将所有连接（包括标记为删除的）赋值给connections，以便在UI中显示删除状态
+    connections.value = filteredResult;
+
+    // 应用排序
+    applySorting();
+
+    // 如果有标记为删除的连接，设置一个定时器在5秒后清理它们
+    const hasDeletedConnections = filteredResult.some(conn => conn.isDeleted);
+    if (hasDeletedConnections) {
+      setTimeout(() => {
+        cleanupDeletedConnections();
+      }, 5000); // 5秒后清理已删除的连接
+    }
   } catch (error) {
     console.error(t("alerts.getConnectionsFailed", { error }), error);
     alert(t("alerts.getConnectionsFailed", { error }));
@@ -461,6 +508,12 @@ function applySorting() {
         return 0;
     }
   });
+}
+
+// 清理已标记为删除的连接
+function cleanupDeletedConnections() {
+  // 过滤掉已标记为删除的连接
+  connections.value = connections.value.filter(conn => !conn.isDeleted);
 }
 
 // 切换列排序
@@ -880,16 +933,32 @@ html {
 .notification-close-btn {
   background: none;
   border: none;
-  font-size: 20px;
+  font-size: 16px; /* 调整字体大小 */
   cursor: pointer;
   color: inherit;
   padding: 0;
   width: 24px;
   height: 24px;
+  border-radius: 50%;
+  font-weight: bold;
+  box-sizing: border-box;
+  margin: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  position: relative;
+  line-height: normal; /* 重置line-height */
+}
+.notification-close-btn::after {
+  content: '×';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none; /* 确保伪元素不影响交互 */
+}
+.notification-close-btn > * {
+  visibility: hidden; /* 隐藏实际内容 */
 }
 
 .notification-close-btn:hover {

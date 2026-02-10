@@ -1,21 +1,14 @@
 <template>
-  <div
-    v-if="showProcessDetails"
-    class="modal-overlay"
-    @click="emit('update:showProcessDetails', false)"
-  >
+  <div v-if="showProcessDetails" class="modal-overlay" @click="emit('update:showProcessDetails', false)">
     <div class="modal-content" @click.stop>
       <div class="modal-header">
         <div class="header-with-icon">
-          <img
-            :src="processIcon ? 'data:image/png;base64,' + processIcon : '/exe.svg'"
-            :alt="processDetails?.name || 'Process Icon'"
-            class="process-icon-large"
-          />
+          <img :src="processIcon ? 'data:image/png;base64,' + processIcon : '/exe.svg'"
+            :alt="processDetails?.name || 'Process Icon'" class="process-icon-large" />
           <h3>{{ t("modal.processDetails") }}</h3>
         </div>
         <button class="close-button" @click="emit('update:showProcessDetails', false)">
-          ×
+          X
         </button>
       </div>
       <div v-if="processDetails" class="process-details">
@@ -35,12 +28,9 @@
           <strong>{{ t("modal.executablePath") }}:</strong>
           <span class="path-container">
             <span>{{ processDetails.executable_path }}</span>
-            <button 
+            <button
               v-if="props.processDetails && props.processDetails.executable_path && props.processDetails.executable_path !== ''"
-              class="open-folder-btn" 
-              @click="openContainingFolder"
-              :title="t('modal.openFolder')"
-            >
+              class="open-folder-btn" @click="openContainingFolder" :title="t('modal.openFolder')">
               📁
             </button>
           </span>
@@ -192,14 +182,16 @@ const formatDate = (timestamp: number | null): string => {
 .header-with-icon {
   display: flex;
   align-items: center;
-  gap: 10px; /* 图标与文字之间的间距 */
+  gap: 10px;
+  /* 图标与文字之间的间距 */
 }
 
 .process-icon-large {
   width: 32px;
   height: 32px;
   object-fit: contain;
-  flex-shrink: 0; /* 防止图标被压缩 */
+  flex-shrink: 0;
+  /* 防止图标被压缩 */
 }
 
 .modal-header h3 {
@@ -210,11 +202,11 @@ const formatDate = (timestamp: number | null): string => {
 }
 
 .close-button {
-  background: #ef4444; /* 红色背景 */
-  border: none;
+  background: #fef2f2; /* 浅红色背景 */
+  border: 1px solid #ddd6fe; /* 红色系边框 */
   font-size: 16px; /* 调整字体大小 */
   cursor: pointer;
-  color: white; /* 白色文字 */
+  color: #dc2626; /* 红色文字 */
   padding: 0;
   width: 24px;
   height: 24px;
@@ -225,30 +217,22 @@ const formatDate = (timestamp: number | null): string => {
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
-  line-height: normal; /* 重置line-height */
-}
-.close-button::after {
-  content: '×';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  pointer-events: none; /* 确保伪元素不影响交互 */
-}
-.close-button > * {
-  visibility: hidden; /* 隐藏实际内容 */
+  line-height: 1;
+  /* 确保行高为1以实现垂直居中 */
 }
 
 .close-button:hover {
-  background-color: #dc2626; /* 更深的红色背景 */
+  background-color: #fecaca; /* 悬停时的浅红色背景 */
+  color: #dc2626; /* 悬停时的深红色 */
+  border-color: #fca5a5; /* 悬停时的红色边框 */
 }
 
 .process-details {
   padding: 16px 20px;
   overflow-y: auto;
   flex-grow: 1;
-  padding-bottom: 20px; /* 确保内容与底部有足够的间距 */
+  padding-bottom: 20px;
+  /* 确保内容与底部有足够的间距 */
 }
 
 .process-details p {
@@ -257,21 +241,27 @@ const formatDate = (timestamp: number | null): string => {
   color: #374151;
   line-height: 1.4;
   display: flex;
-  flex-direction: column; /* 将文本排列改为垂直方向 */
+  flex-direction: column;
+  /* 将文本排列改为垂直方向 */
 }
 
 .process-details strong {
   color: #1f2937;
   min-width: 100px;
   display: inline-block;
-  word-break: break-all; /* 允许在任意字符间换行 */
-  overflow-wrap: break-word; /* 在长单词或URL地址内部进行换行 */
+  word-break: break-all;
+  /* 允许在任意字符间换行 */
+  overflow-wrap: break-word;
+  /* 在长单词或URL地址内部进行换行 */
 }
 
 .process-details span {
-  word-break: break-all; /* 允许在任意字符间换行 */
-  overflow-wrap: break-word; /* 在长单词或URL地址内部进行换行 */
-  white-space: pre-wrap; /* 保留空白符序列，但是正常换行 */
+  word-break: break-all;
+  /* 允许在任意字符间换行 */
+  overflow-wrap: break-word;
+  /* 在长单词或URL地址内部进行换行 */
+  white-space: pre-wrap;
+  /* 保留空白符序列，但是正常换行 */
 }
 
 .path-container {
@@ -287,31 +277,44 @@ const formatDate = (timestamp: number | null): string => {
   cursor: pointer;
   padding: 2px 6px;
   font-size: 16px;
-  color: #3b82f6; /* 蓝色文字 */
+  color: #3b82f6;
+  /* 蓝色文字 */
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0; /* 防止按钮被压缩 */
-  box-shadow: none !important; /* 确保没有阴影 */
-  outline: none !important; /* 确保没有轮廓 */
+  flex-shrink: 0;
+  /* 防止按钮被压缩 */
+  box-shadow: none !important;
+  /* 确保没有阴影 */
+  outline: none !important;
+  /* 确保没有轮廓 */
 }
 
 .open-folder-btn:hover {
-  color: #2563eb; /* 更深的蓝色 */
-  background: transparent !important; /* 保持透明背景 */
-  border: none !important; /* 确保边框为无 */
-  box-shadow: none !important; /* 确保没有阴影 */
+  color: #2563eb;
+  /* 更深的蓝色 */
+  background: transparent !important;
+  /* 保持透明背景 */
+  border: none !important;
+  /* 确保边框为无 */
+  box-shadow: none !important;
+  /* 确保没有阴影 */
 }
 
 .dark .open-folder-btn {
-  color: #60a5fa; /* 暗色主题下的蓝色 */
+  color: #60a5fa;
+  /* 暗色主题下的蓝色 */
 }
 
 .dark .open-folder-btn:hover {
-  color: #3b82f6; /* 暗色主题下的更深蓝色 */
-  background: transparent !important; /* 保持透明背景 */
-  border: none !important; /* 确保边框为无 */
-  box-shadow: none !important; /* 确保没有阴影 */
+  color: #3b82f6;
+  /* 暗色主题下的更深蓝色 */
+  background: transparent !important;
+  /* 保持透明背景 */
+  border: none !important;
+  /* 确保边框为无 */
+  box-shadow: none !important;
+  /* 确保没有阴影 */
 }
 
 /* 暗色主题下的弹窗样式 */
@@ -326,11 +329,21 @@ const formatDate = (timestamp: number | null): string => {
 }
 
 .dark .modal-header h3 {
-  color: #f3f4f6; /* 确保标题文字可见 */
+  color: #f3f4f6;
+  /* 确保标题文字可见 */
 }
 
+/* 暗色主题下的关闭按钮样式 */
 .dark .close-button {
-  background: #ef4444; /* 红色背景 */
+  background: #3f3f46; /* 暗灰色背景 */
+  border: 1px solid #52525b; /* 暗灰边框 */
+  color: #f43f5e; /* 红色文字 */
+}
+
+.dark .close-button:hover {
+  background-color: #52525b; /* 悬停时的暗灰色 */
+  color: #fb7185; /* 悬停时的浅红色 */
+  border-color: #7f1d1d; /* 暗红边框 */
 }
 
 .dark .process-details strong {

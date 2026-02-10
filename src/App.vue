@@ -8,6 +8,7 @@ import StatusBar from "./components/StatusBar.vue";
 import ContextMenu from "./components/ContextMenu.vue";
 import ProcessDetailsModal from "./components/ProcessDetailsModal.vue";
 import AboutDialog from "./components/AboutDialog.vue";
+import MessageBox from "./components/MessageBox.vue";
 
 // 定义连接数据类型
 interface TcpConnection {
@@ -78,6 +79,12 @@ const appVersion = ref('Loading...');
 const showNotificationBox = ref(false);
 const notificationMessage = ref('');
 const notificationType = ref<'success' | 'error' | 'info'>('info'); // 'success', 'error', or 'info'
+
+// 消息弹窗相关状态
+const showMessageDialog = ref(false);
+const messageDialogTitle = ref('');
+const messageDialogContent = ref('');
+const messageDialogType = ref<'info' | 'success' | 'warning' | 'error'>('info');
 
 // 排序相关状态
 const sortColumn = ref<
@@ -274,7 +281,7 @@ async function loadConnections() {
     }
   } catch (error) {
     console.error(t("alerts.getConnectionsFailed", { error }), error);
-    alert(t("alerts.getConnectionsFailed", { error }));
+    showMessageDialogFn(t("alerts.getConnectionsFailed", { error }), 'error');
   } finally {
     isLoading.value = false;
   }
@@ -340,7 +347,7 @@ async function loadProcessDetails(pid: number) {
     processDetails.value = details;
   } catch (error) {
     console.error(t("alerts.getProcessDetailsFailed", { error }), error);
-    alert(t("alerts.getProcessDetailsFailed", { error }));
+    showMessageDialogFn(t("alerts.getProcessDetailsFailed", { error }), 'error');
   }
 }
 
@@ -693,6 +700,19 @@ function showNotification(message: string, type: 'success' | 'error' | 'info' = 
   }, 3000);
 }
 
+// 显示消息弹窗
+function showMessageDialogFn(content: string, type: 'info' | 'success' | 'warning' | 'error' = 'error', title: string = t('alerts.dialogTitle')) {
+  messageDialogContent.value = content;
+  messageDialogType.value = type;
+  messageDialogTitle.value = title;
+  showMessageDialog.value = true;
+}
+
+// 消息弹窗确认回调
+function onMessageDialogConfirm() {
+  showMessageDialog.value = false;
+}
+
 // 检查系统主题偏好
 function checkSystemThemePreference() {
   const savedTheme = localStorage.getItem("theme");
@@ -803,6 +823,16 @@ function checkSystemThemePreference() {
         </button>
       </div>
     </div>
+    
+    <!-- 消息弹窗 -->
+    <MessageBox
+      :show="showMessageDialog"
+      :type="messageDialogType"
+      :title="messageDialogTitle"
+      :message="messageDialogContent"
+      @confirm="onMessageDialogConfirm"
+      @close="showMessageDialog = false"
+    />
   </div>
 </template>
 

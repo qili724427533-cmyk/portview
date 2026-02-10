@@ -3,7 +3,7 @@
     <div class="about-modal">
       <div class="about-header">
         <h2>{{ t("about.title") }}</h2>
-        <button class="close-btn" @click="closeAbout">×</button>
+        <button class="close-btn" @click="closeAbout">X</button>
       </div>
       <div class="about-content">
         <div class="app-logo-container">
@@ -98,39 +98,41 @@ const openGitHub = async () => {
 }
 
 .close-btn {
-  background: none;
-  border: none;
-  font-size: 18px; /* 调整字体大小 */
+  background: #fef2f2; /* 浅红色背景 */
+  border: 1px solid #ddd6fe; /* 红色系边框 */
+  font-size: 16px; /* 调整字体大小 */
   cursor: pointer;
-  color: #ef4444; /* 红色 */
+  color: #dc2626; /* 红色文字 */
   padding: 0;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%; /* 圆形 */
   font-weight: bold;
   box-sizing: border-box;
   margin: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
-  line-height: normal; /* 重置line-height */
-}
-.close-btn::after {
-  content: '×';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  pointer-events: none; /* 确保伪元素不影响交互 */
-}
-.close-btn > * {
-  visibility: hidden; /* 隐藏实际内容 */
+  line-height: 1; /* 确保行高为1以实现垂直居中 */
 }
 
 .close-btn:hover {
-  background-color: #fee2e2; /* 红色背景 */
-  color: #dc2626; /* 深红色 */
+  background-color: #fecaca; /* 悬停时的浅红色背景 */
+  color: #dc2626; /* 悬停时的深红色 */
+  border-color: #fca5a5; /* 悬停时的红色边框 */
+}
+
+/* 暗色主题下的关闭按钮样式 */
+.dark .close-btn {
+  background: #3f3f46; /* 暗灰色背景 */
+  border: 1px solid #52525b; /* 暗灰边框 */
+  color: #f43f5e; /* 红色文字 */
+}
+
+.dark .close-btn:hover {
+  background-color: #52525b; /* 悬停时的暗灰色 */
+  color: #fb7185; /* 悬停时的浅红色 */
+  border-color: #7f1d1d; /* 暗红边框 */
 }
 
 .about-content {

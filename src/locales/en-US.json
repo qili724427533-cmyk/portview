@@ -82,7 +82,8 @@
     "getProcessDetailsFailed": "Failed to get process details: {error}",
     "openFolderFailed": "Failed to open folder: {error}",
     "noExecutablePath": "Process {name} has no executable path",
-    "connectionStateChanged": "Detected {count} connection(s) with state changes"
+    "connectionStateChanged": "Detected {count} connection(s) with state changes",
+    "dialogTitle": "Prompt"
   },
   "about": {
     "title": "About PortView",

@@ -82,7 +82,8 @@
     "getProcessDetailsFailed": "获取进程详情失败: {error}",
     "openFolderFailed": "打开文件夹失败: {error}",
     "noExecutablePath": "进程 {name} 没有可执行文件路径",
-    "connectionStateChanged": "检测到 {count} 个连接状态发生变化"
+    "connectionStateChanged": "检测到 {count} 个连接状态发生变化",
+    "dialogTitle": "提示"
   },
   "about": {
     "title": "关于",

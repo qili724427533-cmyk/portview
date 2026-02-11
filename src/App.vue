@@ -54,6 +54,12 @@ const isFirstLoad = ref(true); // 标记是否是首次加载
 
 const selectedRefreshInterval = ref(1); // 默认选择1秒
 
+// 用于跟踪筛选条件是否发生变化
+const previousFilterProtocol = ref("all");
+const previousFilterState = ref("all");
+const previousSearchProcessName = ref("");
+const previousSearchLocalPort = ref("");
+
 // 主题相关状态
 const isDarkMode = ref(false);
 
@@ -131,8 +137,18 @@ async function loadConnections() {
   try {
     const result: TcpConnection[] = await invoke("get_connections");
 
-    // 保存当前连接列表的副本用于比较, clearing any previous change markers
-    const previousConnections = connections.value.map(conn => ({...conn, hasChanged: undefined}));
+    // 检查筛选条件是否发生了变化
+    const filterChanged = 
+      previousFilterProtocol.value !== filterProtocol.value ||
+      previousFilterState.value !== filterState.value ||
+      previousSearchProcessName.value !== searchProcessName.value ||
+      previousSearchLocalPort.value !== searchLocalPort.value;
+
+    // 更新筛选条件记录
+    previousFilterProtocol.value = filterProtocol.value;
+    previousFilterState.value = filterState.value;
+    previousSearchProcessName.value = searchProcessName.value;
+    previousSearchLocalPort.value = searchLocalPort.value;
 
     // 应用筛选条件
     let filteredResult = result;
@@ -165,17 +181,18 @@ async function loadConnections() {
     if (searchLocalPort.value.trim() !== "") {
       const searchTerm = searchLocalPort.value.trim();
       filteredResult = filteredResult.filter((conn) => {
-        // 检查输入是否为纯数字（端口号）
-        const isNumeric = /^\d+$/.test(searchTerm);
-        if (isNumeric) {
-          // 如果是数字，按端口号精确匹配
-          return conn.local_port.toString() === searchTerm;
-        } else {
-          // 如果不是数字，按正则表达式匹配
-          const regex = new RegExp(searchTerm, 'i');
-          return regex.test(conn.local_port.toString());
-        }
+        // 使用左匹配，无论输入的是数字还是其他内容
+        return conn.local_port.toString().startsWith(searchTerm);
       });
+    }
+
+    // 如果筛选条件发生了变化，则清空上一次的比较列表
+    let previousFilteredConnections: TcpConnection[] = [];
+    if (!filterChanged && !isFirstLoad.value) {
+      // 只有在筛选条件没有变化的情况下，才使用上一次的连接列表进行比较
+      previousFilteredConnections = connections.value
+        .filter(conn => !conn.isDeleted) // 只考虑非删除状态的连接
+        .map(conn => ({...conn, hasChanged: undefined}));
     }
 
     // 生成当前连接的唯一标识符集合
@@ -185,21 +202,21 @@ async function loadConnections() {
       currentConnIds.add(connId);
     });
 
-    // 生成上一次连接的唯一标识符集合
+    // 生成上一次筛选后连接的唯一标识符集合
     const previousConnIds = new Set();
-    previousConnections.forEach((conn) => {
+    previousFilteredConnections.forEach((conn) => {
       const connId = `${conn.protocol}-${conn.local_addr}-${conn.local_port}-${conn.remote_addr}-${conn.remote_port}-${conn.pid || "null"}`;
       previousConnIds.add(connId);
     });
 
-    // 标记状态变化的连接（仅在非首次加载时）
-    if (!isFirstLoad.value) {
+    // 标记状态变化的连接（仅在非首次加载且筛选条件未变化时）
+    if (!isFirstLoad.value && !filterChanged) {
       filteredResult.forEach((conn) => {
         // 生成唯一标识符用于比较
         const connId = `${conn.protocol}-${conn.local_addr}-${conn.local_port}-${conn.remote_addr}-${conn.remote_port}-${conn.pid || "null"}`;
 
         // 查找匹配的旧连接
-        const matchingPrevConn = previousConnections.find((prevConn) => {
+        const matchingPrevConn = previousFilteredConnections.find((prevConn) => {
           const prevConnId = `${prevConn.protocol}-${prevConn.local_addr}-${prevConn.local_port}-${prevConn.remote_addr}-${prevConn.remote_port}-${prevConn.pid || "null"}`;
           return prevConnId === connId;
         });
@@ -216,9 +233,9 @@ async function loadConnections() {
       });
 
       // 标记被删除的连接
-      previousConnections.forEach((prevConn) => {
+      previousFilteredConnections.forEach((prevConn) => {
         const prevConnId = `${prevConn.protocol}-${prevConn.local_addr}-${prevConn.local_port}-${prevConn.remote_addr}-${prevConn.remote_port}-${prevConn.pid || "null"}`;
-        
+
         // 如果当前连接列表中没有这个连接，则它是被删除的连接
         if (!currentConnIds.has(prevConnId)) {
           // 创建一个标记为删除的连接对象
@@ -228,7 +245,7 @@ async function loadConnections() {
         }
       });
     } else {
-      // 首次加载时，不标记任何连接为新增或删除
+      // 首次加载或筛选条件发生变化时，不标记任何连接为新增或删除
       filteredResult.forEach((conn) => {
         conn.isNew = false;
         conn.hasChanged = false;
@@ -247,7 +264,7 @@ async function loadConnections() {
           local_port: c.local_port,
           remote_addr: c.remote_addr,
           remote_port: c.remote_port,
-          old_state: previousConnections.find(
+          old_state: previousFilteredConnections.find(
             (pc) =>
               `${pc.protocol}-${pc.local_addr}-${pc.local_port}-${pc.remote_addr}-${pc.remote_port}-${pc.pid || "null"}` ===
               `${c.protocol}-${c.local_addr}-${c.local_port}-${c.remote_addr}-${c.remote_port}-${c.pid || "null"}`,
@@ -259,9 +276,6 @@ async function loadConnections() {
 
     // 更新状态栏信息
     updateStatusBarInfo(result); // 注意：这里仍然使用原始结果更新状态栏
-
-    // 应用排序
-    applySorting();
 
     // 标记不再是首次加载
     isFirstLoad.value = false;

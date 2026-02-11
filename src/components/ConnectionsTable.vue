@@ -152,7 +152,7 @@
             v-for="(conn, index) in connections"
             :key="index"
             @contextmenu="showContextMenuHandler(conn, $event)"
-            @click="clickedConnection = conn"
+            @click="emit('update:clickedConnection', conn)"
             @dblclick="showProcessDetailsDialog(conn)"
             :class="{
               'selected-row': clickedConnection === conn,

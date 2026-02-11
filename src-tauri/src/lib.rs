@@ -6,6 +6,8 @@ use sysinfo::{Pid, System};
 #[cfg(target_os = "macos")]
 #[macro_use]
 extern crate lazy_static;
+#[cfg(target_os = "macos")]
+use md5;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TcpConnection {
@@ -425,11 +427,54 @@ fn initialize_cache_directory() -> Option<PathBuf> {
     match std::fs::create_dir_all(&cache_dir) {
         Ok(_) => {
             eprintln!("Successfully created cache directory: {:?}", cache_dir);
+            
+            // 预加载缓存文件到内存中
+            preload_cache_files(&cache_dir);
+            
             Some(cache_dir)
         }
         Err(e) => {
             eprintln!("Failed to create cache directory {:?}: {}", cache_dir, e);
             None
+        }
+    }
+}
+
+// 预加载缓存文件到内存中
+#[cfg(target_os = "macos")]
+fn preload_cache_files(cache_dir: &PathBuf) {
+    use std::fs;
+
+    // 读取缓存目录中的所有PNG文件
+    if let Ok(entries) = fs::read_dir(cache_dir) {
+        for entry in entries {
+            if let Ok(entry) = entry {
+                let path = entry.path();
+                
+                // 检查是否为PNG文件
+                if path.extension().map_or(false, |ext| ext == "png") {
+                    if let Some(file_name) = path.file_stem() {
+                        if let Some(file_name_str) = file_name.to_str() {
+                            // 尝试读取文件内容
+                            if let Ok(file_content) = fs::read(&path) {
+                                // 将文件内容编码为base64并存储到缓存中
+                                let base64_icon = base64::Engine::encode(
+                                    &base64::engine::general_purpose::STANDARD,
+                                    &file_content,
+                                );
+                                
+                                // 将缓存数据添加到全局缓存中
+                                let mut cache = ICON_CACHE.lock().unwrap();
+                                // 对于预加载的文件，我们假设它们都是有效的图标
+                                cache.insert(
+                                    file_name_str.to_string(), // 使用文件名（不含扩展名）作为键
+                                    (Some(base64_icon), std::time::SystemTime::now(), true),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -448,7 +493,7 @@ use std::fs;
 use std::path::PathBuf;
 #[cfg(all(not(target_os = "windows"), target_os = "macos"))]
 use std::sync::Mutex;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 // 缓存进程图标信息，包含上次更新时间，以提高性能
 // 键是进程路径，值是(图标数据, 时间戳, 是否有图标)的元组
@@ -459,33 +504,31 @@ lazy_static::lazy_static! {
 
 #[cfg(all(not(target_os = "windows"), target_os = "macos"))]
 fn get_process_icon_by_path(exe_path: &str) -> Option<String> {
-    use std::path::Path;
+    // 使用路径的MD5值作为缓存键
+    let cache_key = format!("{:x}", md5::compute(exe_path.as_bytes()));
 
     // 检查内存缓存中是否已有此进程路径的图标
     {
         let cache = ICON_CACHE.lock().unwrap();
-        if let Some((cached_icon, _, has_cached)) = cache.get(exe_path) {
+        if let Some((cached_icon, _, has_cached)) = cache.get(&cache_key) {
             // 如果之前已经缓存了"无图标"的结果，则直接返回None
             if !has_cached {
                 return None;
             }
-            
+
             // 返回缓存的图标
             return cached_icon.clone();
         }
     }
 
-    // 获取进程名用于缓存文件名
-    let process_name = Path::new(&exe_path)
-        .file_name()?
-        .to_string_lossy()
-        .replace(|c: char| !c.is_alphanumeric(), "_"); // 替换非字母数字字符为下划线
-
+    // 使用路径的MD5值作为缓存文件名
+    let icon_filename = format!("{}.png", cache_key);
+    
     // 获取预初始化的缓存目录
     let cache_dir = get_cache_directory()?;
 
-    // 检查是否已经为该进程名生成过缓存文件
-    let png_cache_path = cache_dir.join(format!("{}_icon.png", process_name));
+    // 检查是否已经为该进程路径生成过缓存文件
+    let png_cache_path = cache_dir.join(icon_filename);
 
     // 如果缓存文件存在，直接使用它
     let png_data = if png_cache_path.exists() {
@@ -498,7 +541,7 @@ fn get_process_icon_by_path(exe_path: &str) -> Option<String> {
             // 提取 .app 目录路径
             let app_path = &exe_path[..index + 4]; // 包括 ".app"
             let resources_path = format!("{}/Contents/Resources", app_path);
-            
+
             if std::path::Path::new(&resources_path).exists() {
                 // 在 Resources 目录中查找 .icns 文件（只在第一层）
                 let resources_dir = std::path::PathBuf::from(resources_path);
@@ -522,7 +565,7 @@ fn get_process_icon_by_path(exe_path: &str) -> Option<String> {
                     } else {
                         // 缓存找不到 .icns 文件的结果
                         let mut cache = ICON_CACHE.lock().unwrap();
-                        cache.insert(exe_path.to_string(), (None, SystemTime::now(), false));
+                        cache.insert(cache_key.clone(), (None, SystemTime::now(), false));
                         return None; // 没有找到 .icns 文件
                     }
                 };
@@ -537,7 +580,7 @@ fn get_process_icon_by_path(exe_path: &str) -> Option<String> {
                             // 缓存写入失败的结果
                             let mut cache = ICON_CACHE.lock().unwrap();
                             cache.insert(
-                                exe_path.to_string(),
+                                cache_key.clone(),
                                 (None, SystemTime::now(), false),
                             );
                             return None; // 如果无法写入缓存，则返回None
@@ -547,20 +590,20 @@ fn get_process_icon_by_path(exe_path: &str) -> Option<String> {
                         // 缓存转换失败的结果
                         let mut cache = ICON_CACHE.lock().unwrap();
                         cache
-                            .insert(exe_path.to_string(), (None, SystemTime::now(), false));
+                            .insert(cache_key.clone(), (None, SystemTime::now(), false));
                         return None; // 转换失败
                     }
                 }
             } else {
                 // 缓存找不到 Resources 目录的结果
                 let mut cache = ICON_CACHE.lock().unwrap();
-                cache.insert(exe_path.to_string(), (None, SystemTime::now(), false));
+                cache.insert(cache_key.clone(), (None, SystemTime::now(), false));
                 return None; // .app 目录存在但 Resources 不存在
             }
         } else {
             // 缓存找不到 .app 目录的结果
             let mut cache = ICON_CACHE.lock().unwrap();
-            cache.insert(exe_path.to_string(), (None, SystemTime::now(), false));
+            cache.insert(cache_key.clone(), (None, SystemTime::now(), false));
             return None; // 没有找到 .app 目录
         }
     };
@@ -568,11 +611,11 @@ fn get_process_icon_by_path(exe_path: &str) -> Option<String> {
     let base64_icon =
         base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &png_data);
 
-    // 将图标添加到内存缓存，使用进程路径作为键
+    // 将图标添加到内存缓存，使用MD5后的路径作为键
     {
         let mut cache = ICON_CACHE.lock().unwrap();
         cache.insert(
-            exe_path.to_string(),
+            cache_key,
             (Some(base64_icon.clone()), SystemTime::now(), true),
         );
     }
@@ -630,97 +673,6 @@ fn get_process_icon_by_pid(_pid: u32) -> Option<String> {
 }
 
 // 通过PID获取可执行文件路径的辅助函数
-#[cfg(target_os = "windows")]
-fn get_executable_path_from_pid(pid: u32) -> Result<String, Box<dyn std::error::Error>> {
-    use std::ffi::OsString;
-    use std::os::windows::ffi::OsStringExt;
-    use std::ptr;
-    use winapi::um::handleapi::CloseHandle;
-    use winapi::um::processthreadsapi::OpenProcess;
-    use winapi::um::winnt::PROCESS_QUERY_INFORMATION;
-
-    unsafe {
-        let handle = OpenProcess(PROCESS_QUERY_INFORMATION, 0, pid);
-        if handle.is_null() {
-            return Err("Failed to open process".into());
-        }
-
-        let mut buffer: [u16; 1024] = [0; 1024];
-        let size = buffer.len();
-
-        let success = winapi::um::psapi::GetModuleFileNameExW(
-            handle,
-            ptr::null_mut(),
-            buffer.as_mut_ptr(),
-            size as u32,
-        );
-
-        CloseHandle(handle);
-
-        if success == 0 {
-            return Err("Failed to get module filename".into());
-        }
-
-        // 找到字符串的结束位置
-        let len = buffer.iter().position(|&c| c == 0).unwrap_or(size);
-        let os_string = OsString::from_wide(&buffer[..len]);
-        Ok(os_string.to_string_lossy().to_string())
-    }
-}
-
-#[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
-fn get_executable_path_from_pid(pid: u32) -> Result<String, Box<dyn std::error::Error>> {
-    use std::fs;
-    use std::path::Path;
-
-    // 在Unix-like系统上，可以通过/proc文件系统获取可执行文件路径
-    let exe_path = format!("/proc/{}/exe", pid);
-
-    if Path::new(&exe_path).exists() {
-        // 读取符号链接以获取可执行文件的实际路径
-        let path = fs::read_link(&exe_path)?;
-        Ok(path.to_string_lossy().to_string())
-    } else {
-        // 如果无法读取/proc/<pid>/exe，返回错误
-        Err(format!("Could not read executable path for PID {}", pid).into())
-    }
-}
-
-// macOS 版本的实现
-#[cfg(target_os = "macos")]
-fn get_executable_path_from_pid(pid: u32) -> Result<String, Box<dyn std::error::Error>> {
-    use std::process::Command;
-
-    // 使用 lsof 命令获取进程的可执行文件路径
-    let lsof_output = Command::new("lsof")
-        .args(&["-p", &pid.to_string(), "-F", "n"])
-        .output()?;
-
-    if !lsof_output.status.success() {
-        return Err(format!("Failed to execute lsof command for PID {}", pid).into());
-    }
-
-    let lsof_stdout = String::from_utf8(lsof_output.stdout)?;
-    for line in lsof_stdout.lines() {
-        if line.starts_with('n') {
-            let path = &line[1..]; // 移除 'n' 前缀
-            if path.ends_with(")") && path.contains(" (deleted)") {
-                // 跳过删除的文件
-                continue;
-            }
-
-            // 检查是否是可执行文件（通常以 / 开头）
-            if path.starts_with('/') {
-                // 验证路径是否存在
-                if std::path::Path::new(path).is_file() {
-                    return Ok(path.to_string());
-                }
-            }
-        }
-    }
-
-    Err(format!("Could not determine executable path for PID {}", pid).into())
-}
 
 // 获取系统网络连接列表
 #[tauri::command]
@@ -736,9 +688,13 @@ async fn get_connections() -> Result<Vec<TcpConnection>, String> {
     let sockets_info = get_sockets_info(af_flags, proto_flags).map_err(|e| e.to_string())?;
 
     // 创建系统信息实例以获取进程名称
-    let mut system = System::new_all();
-    // 刷新所有系统信息，确保获取最完整的进程列表
-    system.refresh_all();
+    let system = System::new_all();
+
+    // 预先构建进程信息映射表，避免重复查询
+    let mut process_map: std::collections::HashMap<Pid, &sysinfo::Process> = std::collections::HashMap::new();
+    for process in system.processes().values() {
+        process_map.insert(process.pid(), process);
+    }
 
     for si in sockets_info {
         match si.protocol_socket_info {
@@ -763,52 +719,51 @@ async fn get_connections() -> Result<Vec<TcpConnection>, String> {
                     None
                 };
 
+                // 根据 PID 获取进程信息（从预构建的映射表中获取）
+                let process_info = pid.and_then(|pid_val| process_map.get(&(pid_val as usize).into()));
+
                 // 根据 PID 获取进程名称
-                let process_name = if let Some(pid_val) = pid {
-                    if let Some(process) = system.process((pid_val as usize).into()) {
-                        Some(process.name().to_string())
-                    } else {
-                        // 如果无法获取进程信息，可能是内核进程或权限不足，显示特殊标识
-                        Some("[KERNEL]".to_string())
-                    }
+                let process_name = if let Some(process) = process_info {
+                    Some(process.name().to_string())
+                } else if pid.is_some() {
+                    // 如果无法获取进程信息，可能是内核进程或权限不足，显示特殊标识
+                    Some("[KERNEL]".to_string())
                 } else {
                     None
                 };
 
                 // 获取进程图标 - 在 macOS 上使用可执行文件路径
-                let icon = if let Some(pid_val) = pid {
-                    if let Some(process) = system.process((pid_val as usize).into()) {
-                        #[cfg(target_os = "macos")]
-                        {
-                            // macOS: 使用可执行文件路径获取图标
-                            if let Some(exe_path) = process.exe() {
-                                let exe_path_str = exe_path.to_string_lossy();
-                                get_process_icon_by_path(&exe_path_str)
-                            } else {
-                                None // 如果无法获取可执行文件路径，则返回None
-                            }
+                let icon = if let Some(process) = process_info {
+                    #[cfg(target_os = "macos")]
+                    {
+                        // macOS: 使用可执行文件路径获取图标
+                        if let Some(exe_path) = process.exe() {
+                            let exe_path_str = exe_path.to_string_lossy();
+                            get_process_icon_by_path(&exe_path_str)
+                        } else {
+                            None // 如果无法获取可执行文件路径，则返回None
                         }
-                        #[cfg(not(target_os = "macos"))]
-                        {
-                            // 其他系统：继续使用原有逻辑
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        // 其他系统：继续使用原有逻辑
+                        if let Some(pid_val) = pid {
                             get_process_icon_by_pid(pid_val)
+                        } else {
+                            None
                         }
-                    } else {
-                        // 内核进程的图标可以设置为特殊图标
-                        None
                     }
                 } else {
+                    // 内核进程的图标可以设置为特殊图标
                     None
                 };
 
                 // 获取进程启动时间
-                let start_time = if let Some(pid_val) = pid {
-                    if let Some(process) = system.process((pid_val as usize).into()) {
-                        Some(process.start_time())
-                    } else {
-                        // 内核进程的时间信息可能不可用，返回0
-                        Some(0)
-                    }
+                let start_time = if let Some(process) = process_info {
+                    Some(process.start_time())
+                } else if pid.is_some() {
+                    // 内核进程的时间信息可能不可用，返回0
+                    Some(0)
                 } else {
                     None
                 };
@@ -848,52 +803,51 @@ async fn get_connections() -> Result<Vec<TcpConnection>, String> {
                     None
                 };
 
+                // 根据 PID 获取进程信息（从预构建的映射表中获取）
+                let process_info = pid.and_then(|pid_val| process_map.get(&(pid_val as usize).into()));
+
                 // 根据 PID 获取进程名称
-                let process_name = if let Some(pid_val) = pid {
-                    if let Some(process) = system.process((pid_val as usize).into()) {
-                        Some(process.name().to_string())
-                    } else {
-                        // 如果无法获取进程信息，可能是内核进程或权限不足，显示特殊标识
-                        Some("[KERNEL]".to_string())
-                    }
+                let process_name = if let Some(process) = process_info {
+                    Some(process.name().to_string())
+                } else if pid.is_some() {
+                    // 如果无法获取进程信息，可能是内核进程或权限不足，显示特殊标识
+                    Some("[KERNEL]".to_string())
                 } else {
                     None
                 };
 
                 // 获取进程图标 - 在 macOS 上使用可执行文件路径
-                let icon = if let Some(pid_val) = pid {
-                    if let Some(process) = system.process((pid_val as usize).into()) {
-                        #[cfg(target_os = "macos")]
-                        {
-                            // macOS: 使用可执行文件路径获取图标
-                            if let Some(exe_path) = process.exe() {
-                                let exe_path_str = exe_path.to_string_lossy();
-                                get_process_icon_by_path(&exe_path_str)
-                            } else {
-                                None // 如果无法获取可执行文件路径，则返回None
-                            }
+                let icon = if let Some(process) = process_info {
+                    #[cfg(target_os = "macos")]
+                    {
+                        // macOS: 使用可执行文件路径获取图标
+                        if let Some(exe_path) = process.exe() {
+                            let exe_path_str = exe_path.to_string_lossy();
+                            get_process_icon_by_path(&exe_path_str)
+                        } else {
+                            None // 如果无法获取可执行文件路径，则返回None
                         }
-                        #[cfg(not(target_os = "macos"))]
-                        {
-                            // 其他系统：继续使用原有逻辑
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        // 其他系统：继续使用原有逻辑
+                        if let Some(pid_val) = pid {
                             get_process_icon_by_pid(pid_val)
+                        } else {
+                            None
                         }
-                    } else {
-                        // 内核进程的图标可以设置为特殊图标
-                        None
                     }
                 } else {
+                    // 内核进程的图标可以设置为特殊图标
                     None
                 };
 
                 // 获取进程启动时间
-                let start_time = if let Some(pid_val) = pid {
-                    if let Some(process) = system.process((pid_val as usize).into()) {
-                        Some(process.start_time())
-                    } else {
-                        // 内核进程的时间信息可能不可用，返回0
-                        Some(0)
-                    }
+                let start_time = if let Some(process) = process_info {
+                    Some(process.start_time())
+                } else if pid.is_some() {
+                    // 内核进程的时间信息可能不可用，返回0
+                    Some(0)
                 } else {
                     None
                 };

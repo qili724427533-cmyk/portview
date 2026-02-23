@@ -12,7 +12,9 @@
         v-if="props.selectedConnection && props.selectedConnection.pid"
       >
         <span class="menu-item-content">
-          <span class="menu-item-icon">📁</span>
+          <span class="menu-item-icon"
+            ><img src="/folder.svg" alt="folder" class="folder-icon"
+          /></span>
           {{ t("contextMenu.openContainingFolder") }}
         </span>
       </li>
@@ -29,7 +31,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import { TcpConnection } from "./ConnectionsTable.vue"; // 导入TcpConnection类型
+import type { TcpConnection } from "@/types/connection";
 
 // 定义组件属性
 interface Props {
@@ -138,6 +140,11 @@ const handleOpenContainingFolder = () => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.menu-item-icon .folder-icon {
+  width: 16px;
+  height: 16px;
 }
 
 /* 暗色主题下的右键菜单样式 */

@@ -3,11 +3,11 @@ use image;
 use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo, TcpState};
 use serde::{Deserialize, Serialize};
 use sysinfo::{Pid, System};
-#[cfg(target_os = "macos")]
-#[macro_use]
-extern crate lazy_static;
-#[cfg(target_os = "macos")]
-use md5;
+
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Mutex;
+use std::time::SystemTime;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TcpConnection {
@@ -38,27 +38,210 @@ pub struct ProcessDetails {
 }
 
 // 将 netstat2 的 TCP 状态转换为字符串
-fn tcp_state_to_string(state: TcpState) -> String {
+fn tcp_state_to_string(state: TcpState) -> &'static str {
     match state {
-        TcpState::Established => "ESTABLISHED".to_string(),
-        TcpState::SynSent => "SYN_SENT".to_string(),
-        TcpState::SynReceived => "SYN_RECV".to_string(),
-        TcpState::FinWait1 => "FIN_WAIT1".to_string(),
-        TcpState::FinWait2 => "FIN_WAIT2".to_string(),
-        TcpState::TimeWait => "TIME_WAIT".to_string(),
-        TcpState::Closed => "CLOSED".to_string(),
-        TcpState::CloseWait => "CLOSE_WAIT".to_string(),
-        TcpState::LastAck => "LAST_ACK".to_string(),
-        TcpState::Listen => "LISTEN".to_string(),
-        TcpState::Closing => "CLOSING".to_string(),
-        TcpState::DeleteTcb => "DELETE_TCB".to_string(),
-        TcpState::Unknown => "UNKNOWN".to_string(),
+        TcpState::Established => "ESTABLISHED",
+        TcpState::SynSent => "SYN_SENT",
+        TcpState::SynReceived => "SYN_RECV",
+        TcpState::FinWait1 => "FIN_WAIT1",
+        TcpState::FinWait2 => "FIN_WAIT2",
+        TcpState::TimeWait => "TIME_WAIT",
+        TcpState::Closed => "CLOSED",
+        TcpState::CloseWait => "CLOSE_WAIT",
+        TcpState::LastAck => "LAST_ACK",
+        TcpState::Listen => "LISTEN",
+        TcpState::Closing => "CLOSING",
+        TcpState::DeleteTcb => "DELETE_TCB",
+        TcpState::Unknown => "UNKNOWN",
     }
 }
 
-// 获取进程的应用图标
+// ==================== 跨平台缓存机制 ====================
+
+// 全局缓存目录路径
+lazy_static::lazy_static! {
+    static ref CACHE_DIR_PATH: Option<PathBuf> = initialize_cache_directory();
+}
+
+// 缓存进程图标信息，包含上次更新时间，以提高性能
+// 键是进程路径的MD5值，值是(图标数据, 时间戳, 是否有图标)的元组
+lazy_static::lazy_static! {
+    static ref ICON_CACHE: Mutex<HashMap<String, (Option<String>, SystemTime, bool)>> = Mutex::new(HashMap::new());
+}
+
+// 初始化缓存目录
+fn initialize_cache_directory() -> Option<PathBuf> {
+    // 使用用户的 home 目录下的 .portview 目录
+    let cache_dir = dirs::home_dir().map(|home| home.join(".portview"));
+
+    let cache_dir = match cache_dir {
+        Some(dir) => dir,
+        None => {
+            eprintln!("Failed to get home directory");
+            return None;
+        }
+    };
+
+    eprintln!("Cache directory: {:?}", cache_dir);
+
+    // 创建缓存目录（如果不存在）
+    match std::fs::create_dir_all(&cache_dir) {
+        Ok(_) => {
+            eprintln!("Successfully created cache directory: {:?}", cache_dir);
+
+            // 预加载缓存文件到内存中
+            preload_cache_files(&cache_dir);
+
+            Some(cache_dir)
+        }
+        Err(e) => {
+            eprintln!("Failed to create cache directory {:?}: {}", cache_dir, e);
+            None
+        }
+    }
+}
+
+// 预加载缓存文件到内存中
+fn preload_cache_files(cache_dir: &PathBuf) {
+    // 读取缓存目录中的所有PNG文件
+    if let Ok(entries) = std::fs::read_dir(cache_dir) {
+        for entry in entries {
+            if let Ok(entry) = entry {
+                let path = entry.path();
+
+                // 检查是否为PNG文件
+                if path.extension().map_or(false, |ext| ext == "png") {
+                    if let Some(file_name) = path.file_stem() {
+                        if let Some(file_name_str) = file_name.to_str() {
+                            // 尝试读取文件内容
+                            if let Ok(file_content) = std::fs::read(&path) {
+                                // 将文件内容编码为base64并存储到缓存中
+                                let base64_icon = base64::Engine::encode(
+                                    &base64::engine::general_purpose::STANDARD,
+                                    &file_content,
+                                );
+
+                                // 将缓存数据添加到全局缓存中
+                                let mut cache = ICON_CACHE.lock().unwrap();
+                                // 对于预加载的文件，我们假设它们都是有效的图标
+                                cache.insert(
+                                    file_name_str.to_string(), // 使用文件名（不含扩展名）作为键
+                                    (Some(base64_icon), SystemTime::now(), true),
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// 获取缓存目录路径
+fn get_cache_directory() -> Option<PathBuf> {
+    CACHE_DIR_PATH.clone()
+}
+
+// 通用的获取进程图标函数（使用缓存）
+fn get_process_icon_by_path(exe_path: &str) -> Option<String> {
+    // 使用路径的MD5值作为缓存键
+    let cache_key = format!("{:x}", md5::compute(exe_path.as_bytes()));
+
+    // 一次获取锁，检查缓存
+    {
+        let cache = ICON_CACHE.lock().unwrap();
+        if let Some((cached_icon, _, has_cached)) = cache.get(&cache_key) {
+            // 如果之前已经缓存了"无图标"的结果，则直接返回None
+            if !has_cached {
+                return None;
+            }
+            // 返回缓存的图标
+            return cached_icon.clone();
+        }
+    }
+
+    // 使用路径的MD5值作为缓存文件名
+    let icon_filename = format!("{}.png", cache_key);
+
+    // 获取预初始化的缓存目录
+    let cache_dir = get_cache_directory()?;
+
+    // 检查是否已经为该进程路径生成过缓存文件
+    let png_cache_path = cache_dir.join(icon_filename);
+
+    // 如果缓存文件存在，直接使用它
+    if png_cache_path.exists() {
+        if let Ok(png_data) = std::fs::read(&png_cache_path) {
+            let base64_icon = base64::Engine::encode(
+                &base64::engine::general_purpose::STANDARD,
+                &png_data,
+            );
+
+            // 将图标添加到内存缓存
+            let mut cache = ICON_CACHE.lock().unwrap();
+            cache.insert(
+                cache_key,
+                (Some(base64_icon.clone()), SystemTime::now(), true),
+            );
+
+            return Some(base64_icon);
+        }
+    }
+
+    // 缓存文件不存在，提取图标
+    let png_data = extract_icon_from_exe(exe_path)?;
+
+    // 保存转换后的PNG到缓存目录
+    let base64_icon = base64::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        &png_data,
+    );
+
+    // 尝试保存到文件缓存
+    let cache_result = std::fs::write(&png_cache_path, &png_data);
+
+    // 将图标添加到内存缓存
+    let mut cache = ICON_CACHE.lock().unwrap();
+    cache.insert(
+        cache_key,
+        (Some(base64_icon.clone()), SystemTime::now(), true),
+    );
+
+    // 如果文件缓存失败，记录警告
+    if cache_result.is_err() {
+        eprintln!("Warning: Failed to write icon cache file: {:?}", png_cache_path);
+    }
+
+    Some(base64_icon)
+}
+
+// 从可执行文件提取图标（平台特定实现）
+fn extract_icon_from_exe(exe_path: &str) -> Option<Vec<u8>> {
+    #[cfg(target_os = "windows")]
+    {
+        extract_icon_from_exe_windows(exe_path)
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        extract_icon_from_exe_macos(exe_path)
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        extract_icon_from_exe_linux(exe_path)
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    {
+        None
+    }
+}
+
+// ==================== Windows 平台实现 ====================
+
 #[cfg(target_os = "windows")]
-fn get_process_icon_by_pid(pid: u32) -> Option<String> {
+fn extract_icon_from_exe_windows(exe_path: &str) -> Option<Vec<u8>> {
     use std::ffi::OsStr;
     use std::os::windows::ffi::OsStrExt;
     use std::ptr;
@@ -66,51 +249,53 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
     use winapi::um::shellapi::ExtractIconW;
     use winapi::um::winuser::DestroyIcon;
 
-    // 尝试通过PID获取进程的可执行文件路径
-    if let Ok(exe_path) = get_executable_path_from_pid(pid) {
-        // 将路径转换为宽字符字符串
-        let wide_path: Vec<u16> = OsStr::new(&exe_path)
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect();
+    // 将路径转换为宽字符字符串
+    let wide_path: Vec<u16> = OsStr::new(exe_path)
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
 
-        // 使用ExtractIconW从EXE文件中提取图标
-        unsafe {
-            let h_instance = ptr::null_mut() as HINSTANCE;
-            let h_icon = ExtractIconW(
-                h_instance,
-                wide_path.as_ptr(),
-                0, // 第一个图标
-            );
+    // 使用ExtractIconW从EXE文件中提取图标
+    unsafe {
+        let h_instance = ptr::null_mut() as HINSTANCE;
+        let h_icon = ExtractIconW(
+            h_instance,
+            wide_path.as_ptr(),
+            0, // 第一个图标
+        );
 
-            // 检查图标句柄是否有效
+        // 检查图标句柄是否有效
+        if h_icon as usize > 1 {
+            // 0和1是特殊值，表示没有图标或错误
+            // 尝试将图标转换为图像数据
+            let icon_data = extract_icon_to_png(h_icon);
+
+            // 销毁图标句柄
+            DestroyIcon(h_icon);
+
+            return icon_data;
+        } else {
+            // 销毁无效图标句柄
             if h_icon as usize > 1 {
-                // 0和1是特殊值，表示没有图标或错误
-                // 尝试将图标转换为图像数据
-                let icon_data = extract_icon_to_png(h_icon);
-
-                // 销毁图标句柄
                 DestroyIcon(h_icon);
-
-                return icon_data;
-            } else {
-                // 销毁无效图标句柄
-                if h_icon as usize > 1 {
-                    DestroyIcon(h_icon);
-                }
             }
         }
     }
 
+    // 缓存找不到图标的结果
+    let cache_key = format!("{:x}", md5::compute(exe_path.as_bytes()));
+    let mut cache = ICON_CACHE.lock().unwrap();
+    cache.insert(cache_key, (None, SystemTime::now(), false));
+
     None
 }
 
-// 辅助函数：将图标转换为PNG数据的Base64编码
+// 辅助函数：将图标转换为PNG数据
 #[cfg(target_os = "windows")]
 use winapi::shared::windef::HICON;
 
 #[cfg(target_os = "windows")]
-unsafe fn extract_icon_to_png(h_icon: HICON) -> Option<String> {
+unsafe fn extract_icon_to_png(h_icon: HICON) -> Option<Vec<u8>> {
     use std::mem;
     use std::ptr;
     use winapi::um::wingdi::{
@@ -266,10 +451,7 @@ unsafe fn extract_icon_to_png(h_icon: HICON) -> Option<String> {
 
         if let Some(img) = image::RgbaImage::from_raw(width as u32, height as u32, flipped_buffer) {
             let mut png_data: Vec<u8> = Vec::new();
-            if let Ok(_) = img.write_to(&mut Cursor::new(&mut png_data), ImageFormat::Png) {
-                let base64_icon =
-                    base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &png_data);
-
+            if img.write_to(&mut Cursor::new(&mut png_data), ImageFormat::Png).is_ok() {
                 if !icon_info.hbmColor.is_null() {
                     DeleteObject(icon_info.hbmColor as *mut _);
                 }
@@ -277,7 +459,7 @@ unsafe fn extract_icon_to_png(h_icon: HICON) -> Option<String> {
                     DeleteObject(icon_info.hbmMask as *mut _);
                 }
 
-                return Some(base64_icon);
+                return Some(png_data);
             }
         }
     }
@@ -293,33 +475,101 @@ unsafe fn extract_icon_to_png(h_icon: HICON) -> Option<String> {
     None
 }
 
-// 辅助函数：从EXE文件中提取图标
+// ==================== macOS 平台实现 ====================
 
-#[cfg(all(not(target_os = "windows"), target_os = "linux"))]
-fn get_process_icon_by_pid(pid: u32) -> Option<String> {
-    use std::path::Path;
-    use std::process::Command;
+#[cfg(target_os = "macos")]
+fn extract_icon_from_exe_macos(exe_path: &str) -> Option<Vec<u8>> {
+    // 通过字符串操作直接查找路径中的 .app 部分并构建 Resources 路径
+    let app_index = exe_path.rfind(".app/");
+    if let Some(index) = app_index {
+        // 提取 .app 目录路径
+        let app_path = &exe_path[..index + 4]; // 包括 ".app"
+        let resources_path = format!("{}/Contents/Resources", app_path);
 
-    // 尝试通过PID获取进程的可执行文件路径
-    let exe_path = format!("/proc/{}/exe", pid);
-    let process_name = if Path::new(&exe_path).exists() {
-        // 读取符号链接以获取可执行文件路径
-        std::fs::read_link(&exe_path)
-            .ok()?
-            .to_string_lossy()
-            .to_string()
-    } else {
-        // 如果无法读取exe链接，尝试从cmdline获取
-        let cmdline_path = format!("/proc/{}/cmdline", pid);
-        if let Ok(cmdline) = std::fs::read_to_string(&cmdline_path) {
-            cmdline.split('\0').next().unwrap_or("").to_string()
-        } else {
-            return None;
+        if std::path::Path::new(&resources_path).exists() {
+            // 在 Resources 目录中查找 .icns 文件（只在第一层）
+            let resources_dir = std::path::PathBuf::from(resources_path);
+            let icns_path = {
+                let mut icns_file_path = None;
+                if let Ok(entries) = std::fs::read_dir(&resources_dir) {
+                    for entry in entries {
+                        if let Ok(entry) = entry {
+                            let file_name = entry.file_name();
+                            if let Some(name_str) = file_name.to_str() {
+                                if name_str.to_lowercase().ends_with(".icns") {
+                                    icns_file_path = Some(entry.path());
+                                    break; // 只取第一个找到的 .icns 文件
+                                }
+                            }
+                        }
+                    }
+                }
+                icns_file_path?
+            };
+
+            // 转换ICNS到PNG
+            return convert_icns_to_png(icns_path.to_str()?).ok();
         }
-    };
+    }
+
+    // 缓存找不到图标的结果
+    let cache_key = format!("{:x}", md5::compute(exe_path.as_bytes()));
+    let mut cache = ICON_CACHE.lock().unwrap();
+    cache.insert(cache_key, (None, SystemTime::now(), false));
+
+    None
+}
+
+// macOS辅助函数：将ICNS转换为PNG
+#[cfg(target_os = "macos")]
+fn convert_icns_to_png(icns_path: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    use std::process::Command;
+    use tempfile::NamedTempFile;
+
+    // 创建临时文件用于输出PNG
+    let temp_file = NamedTempFile::new()?;
+    let temp_path = temp_file.path().to_str().ok_or("Invalid temp file path")?;
+
+    eprintln!("Converting ICNS to PNG: {} -> {}", icns_path, temp_path);
+
+    // 使用sips命令将ICNS转换为PNG
+    // 注意：sips命令参数顺序很重要，源文件应该在最后
+    let output = Command::new("sips")
+        .args(&[
+            "-s", "format", "png",     // 设置输出格式为PNG
+            icns_path, // 输入文件
+            "-o", temp_path, // 输出文件
+        ])
+        .output()?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "sips command failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+
+    // 读取临时文件内容
+    let png_data = std::fs::read(temp_path)?;
+
+    eprintln!("Conversion successful, PNG size: {} bytes", png_data.len());
+
+    if png_data.is_empty() {
+        return Err("Converted PNG data is empty".into());
+    }
+
+    Ok(png_data)
+}
+
+// ==================== Linux 平台实现 ====================
+
+#[cfg(target_os = "linux")]
+fn extract_icon_from_exe_linux(exe_path: &str) -> Option<Vec<u8>> {
+    use std::path::Path;
 
     // 从可执行文件路径提取进程名
-    let basename = Path::new(&process_name)
+    let basename = Path::new(exe_path)
         .file_name()?
         .to_string_lossy()
         .to_string();
@@ -349,10 +599,7 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
                                     );
                                     if Path::new(&icon_path).exists() {
                                         if let Ok(image_data) = std::fs::read(&icon_path) {
-                                            return Some(base64::Engine::encode(
-                                                &base64::engine::general_purpose::STANDARD,
-                                                &image_data,
-                                            ));
+                                            return Some(image_data);
                                         }
                                     }
                                 }
@@ -384,10 +631,7 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
                 for icon_path in icon_paths {
                     if Path::new(&icon_path).exists() {
                         if let Ok(image_data) = std::fs::read(&icon_path) {
-                            return Some(base64::Engine::encode(
-                                &base64::engine::general_purpose::STANDARD,
-                                &image_data,
-                            ));
+                            return Some(image_data);
                         }
                     }
                 }
@@ -395,284 +639,15 @@ fn get_process_icon_by_pid(pid: u32) -> Option<String> {
         }
     }
 
-    None
-}
-
-// 全局缓存目录路径
-#[cfg(target_os = "macos")]
-lazy_static::lazy_static! {
-    static ref CACHE_DIR_PATH: Option<PathBuf> = initialize_cache_directory();
-}
-
-// 初始化缓存目录
-#[cfg(target_os = "macos")]
-fn initialize_cache_directory() -> Option<PathBuf> {
-    use std::env;
-
-    // 获取用户的 home 目录
-    let home_dir = match env::var("HOME") {
-        Ok(home) => PathBuf::from(home),
-        Err(_) => {
-            eprintln!("Failed to get HOME directory");
-            return None;
-        }
-    };
-
-    eprintln!("Home directory: {:?}", home_dir);
-
-    let cache_dir = home_dir.join(".portview");
-    eprintln!("Attempting to create cache directory: {:?}", cache_dir);
-
-    // 创建缓存目录（如果不存在）
-    match std::fs::create_dir_all(&cache_dir) {
-        Ok(_) => {
-            eprintln!("Successfully created cache directory: {:?}", cache_dir);
-            
-            // 预加载缓存文件到内存中
-            preload_cache_files(&cache_dir);
-            
-            Some(cache_dir)
-        }
-        Err(e) => {
-            eprintln!("Failed to create cache directory {:?}: {}", cache_dir, e);
-            None
-        }
-    }
-}
-
-// 预加载缓存文件到内存中
-#[cfg(target_os = "macos")]
-fn preload_cache_files(cache_dir: &PathBuf) {
-    use std::fs;
-
-    // 读取缓存目录中的所有PNG文件
-    if let Ok(entries) = fs::read_dir(cache_dir) {
-        for entry in entries {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-                
-                // 检查是否为PNG文件
-                if path.extension().map_or(false, |ext| ext == "png") {
-                    if let Some(file_name) = path.file_stem() {
-                        if let Some(file_name_str) = file_name.to_str() {
-                            // 尝试读取文件内容
-                            if let Ok(file_content) = fs::read(&path) {
-                                // 将文件内容编码为base64并存储到缓存中
-                                let base64_icon = base64::Engine::encode(
-                                    &base64::engine::general_purpose::STANDARD,
-                                    &file_content,
-                                );
-                                
-                                // 将缓存数据添加到全局缓存中
-                                let mut cache = ICON_CACHE.lock().unwrap();
-                                // 对于预加载的文件，我们假设它们都是有效的图标
-                                cache.insert(
-                                    file_name_str.to_string(), // 使用文件名（不含扩展名）作为键
-                                    (Some(base64_icon), std::time::SystemTime::now(), true),
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-// 获取缓存目录路径
-#[cfg(target_os = "macos")]
-fn get_cache_directory() -> Option<PathBuf> {
-    CACHE_DIR_PATH.clone()
-}
-
-#[cfg(all(not(target_os = "windows"), target_os = "macos"))]
-use std::collections::HashMap;
-#[cfg(all(not(target_os = "windows"), target_os = "macos"))]
-use std::fs;
-#[cfg(all(not(target_os = "windows"), target_os = "macos"))]
-use std::path::PathBuf;
-#[cfg(all(not(target_os = "windows"), target_os = "macos"))]
-use std::sync::Mutex;
-use std::time::SystemTime;
-
-// 缓存进程图标信息，包含上次更新时间，以提高性能
-// 键是进程路径，值是(图标数据, 时间戳, 是否有图标)的元组
-#[cfg(all(not(target_os = "windows"), target_os = "macos"))]
-lazy_static::lazy_static! {
-    static ref ICON_CACHE: Mutex<HashMap<String, (Option<String>, SystemTime, bool)>> = Mutex::new(HashMap::new());
-}
-
-#[cfg(all(not(target_os = "windows"), target_os = "macos"))]
-fn get_process_icon_by_path(exe_path: &str) -> Option<String> {
-    // 使用路径的MD5值作为缓存键
+    // 缓存找不到图标的结果
     let cache_key = format!("{:x}", md5::compute(exe_path.as_bytes()));
+    let mut cache = ICON_CACHE.lock().unwrap();
+    cache.insert(cache_key, (None, SystemTime::now(), false));
 
-    // 检查内存缓存中是否已有此进程路径的图标
-    {
-        let cache = ICON_CACHE.lock().unwrap();
-        if let Some((cached_icon, _, has_cached)) = cache.get(&cache_key) {
-            // 如果之前已经缓存了"无图标"的结果，则直接返回None
-            if !has_cached {
-                return None;
-            }
-
-            // 返回缓存的图标
-            return cached_icon.clone();
-        }
-    }
-
-    // 使用路径的MD5值作为缓存文件名
-    let icon_filename = format!("{}.png", cache_key);
-    
-    // 获取预初始化的缓存目录
-    let cache_dir = get_cache_directory()?;
-
-    // 检查是否已经为该进程路径生成过缓存文件
-    let png_cache_path = cache_dir.join(icon_filename);
-
-    // 如果缓存文件存在，直接使用它
-    let png_data = if png_cache_path.exists() {
-        fs::read(&png_cache_path).ok()?
-    } else {
-        // 如果缓存文件不存在，查找.app包并转换图标
-        // 通过字符串操作直接查找路径中的 .app 部分并构建 Resources 路径
-        let app_index = exe_path.rfind(".app/");
-        if let Some(index) = app_index {
-            // 提取 .app 目录路径
-            let app_path = &exe_path[..index + 4]; // 包括 ".app"
-            let resources_path = format!("{}/Contents/Resources", app_path);
-
-            if std::path::Path::new(&resources_path).exists() {
-                // 在 Resources 目录中查找 .icns 文件（只在第一层）
-                let resources_dir = std::path::PathBuf::from(resources_path);
-                let icns_path = {
-                    let mut icns_file_path = None;
-                    if let Ok(entries) = fs::read_dir(&resources_dir) {
-                        for entry in entries {
-                            if let Ok(entry) = entry {
-                                let file_name = entry.file_name();
-                                if let Some(name_str) = file_name.to_str() {
-                                    if name_str.to_lowercase().ends_with(".icns") {
-                                        icns_file_path = Some(entry.path());
-                                        break; // 只取第一个找到的 .icns 文件
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if let Some(path) = icns_file_path {
-                        path
-                    } else {
-                        // 缓存找不到 .icns 文件的结果
-                        let mut cache = ICON_CACHE.lock().unwrap();
-                        cache.insert(cache_key.clone(), (None, SystemTime::now(), false));
-                        return None; // 没有找到 .icns 文件
-                    }
-                };
-
-                // 转换ICNS到PNG并保存到缓存
-                match convert_icns_to_png(icns_path.to_str()?) {
-                    Ok(data) => {
-                        // 保存转换后的PNG到缓存目录
-                        if fs::write(&png_cache_path, &data).is_ok() {
-                            data
-                        } else {
-                            // 缓存写入失败的结果
-                            let mut cache = ICON_CACHE.lock().unwrap();
-                            cache.insert(
-                                cache_key.clone(),
-                                (None, SystemTime::now(), false),
-                            );
-                            return None; // 如果无法写入缓存，则返回None
-                        }
-                    }
-                    Err(_) => {
-                        // 缓存转换失败的结果
-                        let mut cache = ICON_CACHE.lock().unwrap();
-                        cache
-                            .insert(cache_key.clone(), (None, SystemTime::now(), false));
-                        return None; // 转换失败
-                    }
-                }
-            } else {
-                // 缓存找不到 Resources 目录的结果
-                let mut cache = ICON_CACHE.lock().unwrap();
-                cache.insert(cache_key.clone(), (None, SystemTime::now(), false));
-                return None; // .app 目录存在但 Resources 不存在
-            }
-        } else {
-            // 缓存找不到 .app 目录的结果
-            let mut cache = ICON_CACHE.lock().unwrap();
-            cache.insert(cache_key.clone(), (None, SystemTime::now(), false));
-            return None; // 没有找到 .app 目录
-        }
-    };
-
-    let base64_icon =
-        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &png_data);
-
-    // 将图标添加到内存缓存，使用MD5后的路径作为键
-    {
-        let mut cache = ICON_CACHE.lock().unwrap();
-        cache.insert(
-            cache_key,
-            (Some(base64_icon.clone()), SystemTime::now(), true),
-        );
-    }
-
-    Some(base64_icon)
-}
-
-// macOS辅助函数：将ICNS转换为PNG
-#[cfg(target_os = "macos")]
-fn convert_icns_to_png(icns_path: &str) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-    use std::fs;
-    use std::process::Command;
-    use tempfile::NamedTempFile;
-
-    // 创建临时文件用于输出PNG
-    let temp_file = NamedTempFile::new()?;
-    let temp_path = temp_file.path().to_str().ok_or("Invalid temp file path")?;
-
-    eprintln!("Converting ICNS to PNG: {} -> {}", icns_path, temp_path);
-
-    // 使用sips命令将ICNS转换为PNG
-    // 注意：sips命令参数顺序很重要，源文件应该在最后
-    let output = Command::new("sips")
-        .args(&[
-            "-s", "format", "png",     // 设置输出格式为PNG
-            icns_path, // 输入文件
-            "-o", temp_path, // 输出文件
-        ])
-        .output()?;
-
-    if !output.status.success() {
-        return Err(format!(
-            "sips command failed: {}",
-            String::from_utf8_lossy(&output.stderr)
-        )
-        .into());
-    }
-
-    // 读取临时文件内容
-    let png_data = fs::read(temp_path)?;
-
-    eprintln!("Conversion successful, PNG size: {} bytes", png_data.len());
-
-    if png_data.is_empty() {
-        return Err("Converted PNG data is empty".into());
-    }
-
-    Ok(png_data)
-}
-
-#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
-fn get_process_icon_by_pid(_pid: u32) -> Option<String> {
-    // 对于其他平台，返回None
     None
 }
 
-// 通过PID获取可执行文件路径的辅助函数
+// ==================== 网络连接相关函数 ====================
 
 // 获取系统网络连接列表
 #[tauri::command]
@@ -732,29 +707,15 @@ async fn get_connections() -> Result<Vec<TcpConnection>, String> {
                     None
                 };
 
-                // 获取进程图标 - 在 macOS 上使用可执行文件路径
+                // 获取进程图标 - 使用统一的缓存机制
                 let icon = if let Some(process) = process_info {
-                    #[cfg(target_os = "macos")]
-                    {
-                        // macOS: 使用可执行文件路径获取图标
-                        if let Some(exe_path) = process.exe() {
-                            let exe_path_str = exe_path.to_string_lossy();
-                            get_process_icon_by_path(&exe_path_str)
-                        } else {
-                            None // 如果无法获取可执行文件路径，则返回None
-                        }
-                    }
-                    #[cfg(not(target_os = "macos"))]
-                    {
-                        // 其他系统：继续使用原有逻辑
-                        if let Some(pid_val) = pid {
-                            get_process_icon_by_pid(pid_val)
-                        } else {
-                            None
-                        }
+                    if let Some(exe_path) = process.exe() {
+                        let exe_path_str = exe_path.to_string_lossy();
+                        get_process_icon_by_path(&exe_path_str)
+                    } else {
+                        None
                     }
                 } else {
-                    // 内核进程的图标可以设置为特殊图标
                     None
                 };
 
@@ -774,12 +735,12 @@ async fn get_connections() -> Result<Vec<TcpConnection>, String> {
                     local_port,
                     remote_addr,
                     remote_port,
-                    state,
+                    state: state.to_string(),
                     pid,
                     process_name,
-                    icon, // 保持原有的图标数据
+                    icon,
                     start_time,
-                    fill_column: String::new(), // 填充列，留空
+                    fill_column: String::new(),
                 });
             }
             ProtocolSocketInfo::Udp(udp_si) => {
@@ -816,29 +777,15 @@ async fn get_connections() -> Result<Vec<TcpConnection>, String> {
                     None
                 };
 
-                // 获取进程图标 - 在 macOS 上使用可执行文件路径
+                // 获取进程图标 - 使用统一的缓存机制
                 let icon = if let Some(process) = process_info {
-                    #[cfg(target_os = "macos")]
-                    {
-                        // macOS: 使用可执行文件路径获取图标
-                        if let Some(exe_path) = process.exe() {
-                            let exe_path_str = exe_path.to_string_lossy();
-                            get_process_icon_by_path(&exe_path_str)
-                        } else {
-                            None // 如果无法获取可执行文件路径，则返回None
-                        }
-                    }
-                    #[cfg(not(target_os = "macos"))]
-                    {
-                        // 其他系统：继续使用原有逻辑
-                        if let Some(pid_val) = pid {
-                            get_process_icon_by_pid(pid_val)
-                        } else {
-                            None
-                        }
+                    if let Some(exe_path) = process.exe() {
+                        let exe_path_str = exe_path.to_string_lossy();
+                        get_process_icon_by_path(&exe_path_str)
+                    } else {
+                        None
                     }
                 } else {
-                    // 内核进程的图标可以设置为特殊图标
                     None
                 };
 
@@ -858,12 +805,12 @@ async fn get_connections() -> Result<Vec<TcpConnection>, String> {
                     local_port,
                     remote_addr,
                     remote_port,
-                    state,
+                    state: state.to_string(),
                     pid,
                     process_name,
-                    icon, // 保持原有的图标数据
+                    icon,
                     start_time,
-                    fill_column: String::new(), // 填充列，留空
+                    fill_column: String::new(),
                 });
             }
         }
@@ -1012,18 +959,11 @@ async fn update_window_theme(_window: tauri::Window, _is_dark_mode: bool) -> Res
     Ok(())
 }
 
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
-            greet,
             get_connections,
             get_process_details,
             kill_process,

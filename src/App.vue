@@ -9,36 +9,7 @@ import ContextMenu from "./components/ContextMenu.vue";
 import ProcessDetailsModal from "./components/ProcessDetailsModal.vue";
 import AboutDialog from "./components/AboutDialog.vue";
 import MessageBox from "./components/MessageBox.vue";
-
-// 定义连接数据类型
-interface TcpConnection {
-  protocol: string;
-  local_addr: string;
-  local_port: number;
-  remote_addr: string;
-  remote_port: number;
-  state: string;
-  pid: number | null;
-  process_name: string | null;
-  icon: string | null; // Base64 encoded icon data
-  start_time: number | null; // Process start time in seconds since Unix epoch
-  fill_column: string; // Fill column for filling remaining space
-  isNew?: boolean; // 标记是否为新连接
-  hasChanged?: boolean; // 标记连接状态是否有变化
-  isDeleted?: boolean; // 标记是否为即将删除的连接
-}
-
-// 定义进程详情类型
-interface ProcessDetails {
-  pid: number;
-  name: string;
-  command_line: string;
-  executable_path: string;
-  memory_usage: number;
-  cpu_usage: number;
-  parent_pid: number;
-  start_time: number;
-}
+import type { TcpConnection, ProcessDetails, SortColumn, SortDirection, SortValue } from "@/types/connection";
 
 // 初始化国际化
 const { t, locale } = useI18n();
@@ -93,19 +64,8 @@ const messageDialogContent = ref('');
 const messageDialogType = ref<'info' | 'success' | 'warning' | 'error'>('info');
 
 // 排序相关状态
-const sortColumn = ref<
-  | "process_name"
-  | "pid"
-  | "protocol"
-  | "local_addr"
-  | "local_port"
-  | "remote_addr"
-  | "remote_port"
-  | "state"
-  | "start_time"
-  | null
->(null);
-const sortDirection = ref<"asc" | "desc">("asc"); // 'asc' 升序, 'desc' 降序
+const sortColumn = ref<SortColumn | null>(null);
+const sortDirection = ref<SortDirection>("asc"); // 'asc' 升序, 'desc' 降序
 
 // 存储用户自定义的列宽
 const customColumnWidths = ref<Record<string, number>>({});
@@ -468,7 +428,7 @@ function applySorting() {
   if (!sortColumn.value) return;
 
   connections.value.sort((a, b) => {
-    let valueA: any, valueB: any;
+    let valueA: SortValue, valueB: SortValue;
 
     switch (sortColumn.value) {
       case "process_name":
@@ -538,18 +498,7 @@ function cleanupDeletedConnections() {
 }
 
 // 切换列排序
-async function toggleSort(
-  column:
-    | "process_name"
-    | "pid"
-    | "protocol"
-    | "local_addr"
-    | "local_port"
-    | "remote_addr"
-    | "remote_port"
-    | "state"
-    | "start_time",
-) {
+async function toggleSort(column: SortColumn) {
   // 在排序前重新获取最新连接数据，确保排序基于最新数据
   await loadConnections();
 

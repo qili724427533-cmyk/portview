@@ -1,13 +1,25 @@
 <template>
-  <div v-if="showProcessDetails" class="modal-overlay" @click="emit('update:showProcessDetails', false)">
+  <div
+    v-if="showProcessDetails"
+    class="modal-overlay"
+    @click="emit('update:showProcessDetails', false)"
+  >
     <div class="modal-content" @click.stop>
       <div class="modal-header">
         <div class="header-with-icon">
-          <img :src="processIcon ? 'data:image/png;base64,' + processIcon : '/exe.svg'"
-            :alt="processDetails?.name || 'Process Icon'" class="process-icon-large" />
+          <img
+            :src="
+              processIcon ? 'data:image/png;base64,' + processIcon : '/exe.svg'
+            "
+            :alt="processDetails?.name || 'Process Icon'"
+            class="process-icon-large"
+          />
           <h3>{{ t("modal.processDetails") }}</h3>
         </div>
-        <button class="close-button" @click="emit('update:showProcessDetails', false)">
+        <button
+          class="close-button"
+          @click="emit('update:showProcessDetails', false)"
+        >
           X
         </button>
       </div>
@@ -29,9 +41,16 @@
           <span class="path-container">
             <span>{{ processDetails.executable_path }}</span>
             <button
-              v-if="props.processDetails && props.processDetails.executable_path && props.processDetails.executable_path !== ''"
-              class="open-folder-btn" @click="openContainingFolder" :title="t('modal.openFolder')">
-              📁
+              v-if="
+                props.processDetails &&
+                props.processDetails.executable_path &&
+                props.processDetails.executable_path !== ''
+              "
+              class="open-folder-btn"
+              @click="openContainingFolder"
+              :title="t('modal.openFolder')"
+            >
+              <img src="/folder.svg" alt="folder" class="folder-icon" />
             </button>
           </span>
         </p>
@@ -59,18 +78,7 @@
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
-
-// 定义进程详情类型
-export interface ProcessDetails {
-  pid: number;
-  name: string;
-  command_line: string;
-  executable_path: string;
-  memory_usage: number;
-  cpu_usage: number;
-  parent_pid: number;
-  start_time: number;
-}
+import type { ProcessDetails } from "@/types/connection";
 
 // 定义组件属性
 interface Props {
@@ -95,13 +103,14 @@ const { t } = useI18n();
 const openContainingFolder = async () => {
   if (props.processDetails && props.processDetails.executable_path) {
     try {
-      await invoke('open_folder', { path: props.processDetails.executable_path });
+      await invoke("open_folder", {
+        path: props.processDetails.executable_path,
+      });
     } catch (error) {
-      console.error('Failed to open folder:', error);
+      console.error("Failed to open folder:", error);
     }
   }
 };
-
 
 // 格式化内存使用量显示
 const formatMemoryUsage = (memoryInBytes: number): string => {
@@ -288,6 +297,11 @@ const formatDate = (timestamp: number | null): string => {
   /* 确保没有阴影 */
   outline: none !important;
   /* 确保没有轮廓 */
+}
+
+.open-folder-btn .folder-icon {
+  width: 20px;
+  height: 20px;
 }
 
 .open-folder-btn:hover {

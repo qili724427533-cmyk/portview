@@ -195,31 +195,14 @@
 <script setup lang="ts">
 import { computed, watch, nextTick, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
-
-// 定义连接数据类型
-export interface TcpConnection {
-  protocol: string;
-  local_addr: string;
-  local_port: number;
-  remote_addr: string;
-  remote_port: number;
-  state: string;
-  pid: number | null;
-  process_name: string | null;
-  icon: string | null; // Base64 encoded icon data
-  start_time: number | null; // Process start time in seconds since Unix epoch
-  fill_column: string; // Fill column for filling remaining space
-  isNew?: boolean; // 标记是否为新连接
-  hasChanged?: boolean; // 标记连接状态是否有变化
-  isDeleted?: boolean; // 标记是否为即将删除的连接
-}
+import type { TcpConnection, SortColumn, SortDirection } from "@/types/connection";
 
 // 定义组件属性
 interface Props {
   connections: TcpConnection[];
   clickedConnection: TcpConnection | null;
   sortColumn: string | null;
-  sortDirection: "asc" | "desc";
+  sortDirection: SortDirection;
   customColumnWidths: Record<string, number>;
 }
 
@@ -228,7 +211,7 @@ const props = defineProps<Props>();
 // 定义事件发射器
 interface Emits {
   (e: "update:clickedConnection", value: TcpConnection): void;
-  (e: "toggleSort", column: "process_name" | "pid" | "protocol" | "local_addr" | "local_port" | "remote_addr" | "remote_port" | "state" | "start_time"): void;
+  (e: "toggleSort", column: SortColumn | 'start_time'): void;
   (e: "showContextMenuHandler", conn: TcpConnection, event: MouseEvent): void;
   (e: "showProcessDetailsDialog", conn: TcpConnection): void;
   (e: "update:customColumnWidths", value: Record<string, number>): void;
@@ -272,7 +255,7 @@ watch(connections, () => {
 }, { deep: true });
 
 // 方法
-const toggleSort = (column: "process_name" | "pid" | "protocol" | "local_addr" | "local_port" | "remote_addr" | "remote_port" | "state" | "start_time") => {
+const toggleSort = (column: SortColumn) => {
   emit('toggleSort', column);
 };
 

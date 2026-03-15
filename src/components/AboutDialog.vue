@@ -51,7 +51,7 @@ const closeAbout = () => {
 
 const openGitHub = async () => {
   // 使用系统默认浏览器打开链接
-  await openUrl('https://github.com/vcyang/portview');
+  await openUrl('https://github.com/vcqr/portview');
 };
 </script>
 

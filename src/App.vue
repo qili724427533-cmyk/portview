@@ -9,7 +9,7 @@ import ContextMenu from "./components/ContextMenu.vue";
 import ProcessDetailsModal from "./components/ProcessDetailsModal.vue";
 import AboutDialog from "./components/AboutDialog.vue";
 import MessageBox from "./components/MessageBox.vue";
-import type { TcpConnection, ProcessDetails, SortColumn, SortDirection, SortValue, ConnectionsSnapshot } from "@/types/connection";
+import type { TcpConnection, ProcessDetails, SortColumn, SortDirection, SortValue, ConnectionsSnapshot, NetRate } from "@/types/connection";
 
 // 初始化国际化
 const { t, locale } = useI18n();
@@ -98,9 +98,28 @@ const statusBarInfo = ref({
   timeWaitConnections: 0,
   closeWaitConnections: 0,
   otherConnections: 0,
+  netDown: 0, // 系统下载速率（字节/秒）
+  netUp: 0, // 系统上传速率（字节/秒）
+  netTotalDown: 0, // 会话累计下载（字节）
+  netTotalUp: 0, // 会话累计上传（字节）
   lastUpdate: new Date().toLocaleTimeString(),
   refreshInterval: null as number | null,
 });
+
+// 系统网速实时刷新（独立 1 秒轻量轮询，不依赖自动刷新开关）
+let netRateTimer: number | null = null;
+
+async function refreshNetRate() {
+  try {
+    const rate = await invoke<NetRate>("get_net_rate");
+    statusBarInfo.value.netDown = rate.down_bps;
+    statusBarInfo.value.netUp = rate.up_bps;
+    statusBarInfo.value.netTotalDown = rate.total_down;
+    statusBarInfo.value.netTotalUp = rate.total_up;
+  } catch {
+    // 浏览器环境或后端不可用时静默忽略
+  }
+}
 
 // 获取网络连接列表
 async function loadConnections() {
@@ -610,6 +629,10 @@ onMounted(async () => {
 
   loadConnections();
 
+  // 启动系统网速实时刷新
+  refreshNetRate();
+  netRateTimer = window.setInterval(refreshNetRate, 1000);
+
   // 获取应用版本
   try {
     appVersion.value = await invoke("get_app_version");
@@ -645,6 +668,11 @@ onUnmounted(() => {
   // 清除自动刷新定时器
   if (autoRefreshInterval.value !== null) {
     clearInterval(autoRefreshInterval.value);
+  }
+
+  // 清除网速刷新定时器
+  if (netRateTimer !== null) {
+    clearInterval(netRateTimer);
   }
 
   // 移除文档点击事件监听器
@@ -761,6 +789,7 @@ function checkSystemThemePreference() {
       :sortColumn="sortColumn"
       :sortDirection="sortDirection"
       :customColumnWidths="customColumnWidths"
+      :isLoading="isLoading"
       @update:clickedConnection="clickedConnection = $event"
       @toggleSort="toggleSort"
       @showContextMenuHandler="showContextMenuHandler"
@@ -801,7 +830,7 @@ function checkSystemThemePreference() {
     <div
       v-if="showNotificationBox"
       class="notification-box"
-      :class="[notificationType, isDarkMode ? 'dark' : '']"
+      :class="notificationType"
     >
       <div class="notification-content">
         <span class="notification-message">{{ notificationMessage }}</span>
@@ -842,120 +871,56 @@ function checkSystemThemePreference() {
 </style>
 
 <style>
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-}
-
-body,
-html {
+.container {
   margin: 0;
   padding: 0;
-  height: 100%;
-  width: 100%;
-  overflow: hidden; /* 防止出现全局滚动条 */
+  display: flex;
+  flex-direction: column;
+  height: 100vh; /* 使用确切的高度 */
+  width: 100%; /* 使用百分比宽度，避免滚动条问题 */
+  flex: 1 1 auto;
+  min-height: 0; /* 允许flex子项收缩 */
+  min-width: 0; /* 允许flex子项收缩 */
 }
 
-:root.dark {
-  color: #f6f6f6;
-  background-color: #111827;
-}
-
-/* 暗色主题下的链接样式 */
-.dark a:hover {
-  color: #24c8db;
-}
-
-/* 深色模式下的通用样式 */
-.dark {
-  background-color: #1a202c; /* 深灰蓝 */
-  color: #a0aec0; /* 中等亮度的灰蓝，确保可读性 */
-}
-
-/* 暗色主题下的滚动条样式 */
-.dark ::-webkit-scrollbar {
-  width: 12px; /* 纵向滚动条宽度 */
-  height: 12px; /* 横向滚动条高度 */
-}
-
-.dark ::-webkit-scrollbar-track {
-  background: #1a202c; /* 与背景色一致 */
-  border-radius: 6px;
-}
-
-.dark ::-webkit-scrollbar-thumb {
-  background: #2d3748; /* 与菜单背景色相近但略深 */
-  border-radius: 6px;
-}
-
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: #4a5568; /* 悬停时的颜色 */
-}
-
-/* 亮色主题下的滚动条样式 */
-::-webkit-scrollbar {
-  width: 12px; /* 纵向滚动条宽度 */
-  height: 12px; /* 横向滚动条高度 */
-}
-
-::-webkit-scrollbar-track {
-  background: #f3f4f6; /* 与亮色主题背景一致 */
-  border-radius: 6px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #cbd5e0; /* 与亮色主题边框色相近 */
-  border-radius: 6px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #a0aec0; /* 悬停时的颜色 */
-}
-
-/* 通知提示框样式 */
+/* ===== 通知提示框 ===== */
 .notification-box {
   position: fixed;
-  top: 20px;
-  right: 20px;
+  top: 16px;
+  right: 16px;
   z-index: 10000;
   min-width: 300px;
   max-width: 500px;
-  border-radius: 8px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  animation: slideInRight 0.3s ease-out;
+  border-radius: var(--radius-md);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--chart-cyan);
+  box-shadow: var(--shadow-lg);
+  animation: slideInRight 0.25s ease-out;
+  overflow: hidden;
 }
 
 .notification-content {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
-  border-radius: 8px;
+  padding: 12px 14px;
 }
 
 .notification-message {
   flex: 1;
   margin-right: 10px;
   word-break: break-word;
+  font-size: 13px;
+  color: var(--text-1);
 }
 
 .notification-close-btn {
   background: none;
   border: none;
-  font-size: 16px; /* 调整字体大小 */
+  font-size: 16px;
   cursor: pointer;
-  color: inherit;
+  color: var(--text-3);
   padding: 0;
   width: 24px;
   height: 24px;
@@ -966,63 +931,26 @@ html {
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
-  line-height: normal; /* 重置line-height */
-}
-.notification-close-btn::after {
-  content: '×';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  pointer-events: none; /* 确保伪元素不影响交互 */
-}
-.notification-close-btn > * {
-  visibility: hidden; /* 隐藏实际内容 */
+  line-height: normal;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .notification-close-btn:hover {
-  background-color: rgba(0, 0, 0, 0.1);
+  background-color: var(--bg-hover);
+  color: var(--text-1);
 }
 
-/* 成功通知样式 */
-.notification-box.success .notification-content {
-  background-color: #d4edda;
-  color: #155724;
-  border: 1px solid #c3e6cb;
+/* 语义色左条 */
+.notification-box.success {
+  border-left-color: var(--success);
 }
 
-/* 错误通知样式 */
-.notification-box.error .notification-content {
-  background-color: #f8d7da;
-  color: #721c24;
-  border: 1px solid #f5c6cb;
+.notification-box.error {
+  border-left-color: var(--danger);
 }
 
-/* 信息通知样式 */
-.notification-box.info .notification-content {
-  background-color: #d1ecf1;
-  color: #0c5460;
-  border: 1px solid #bee5eb;
-}
-
-/* 暗色主题下的通知样式 */
-.notification-box.dark.success .notification-content {
-  background-color: #1d3c25;
-  color: #8bd49b;
-  border: 1px solid #2d5c45;
-}
-
-.notification-box.dark.error .notification-content {
-  background-color: #572e37;
-  color: #e6a7b3;
-  border: 1px solid #7a404d;
-}
-
-.notification-box.dark.info .notification-content {
-  background-color: #2a4d5c;
-  color: #8dd1e1;
-  border: 1px solid #3a6a7d;
+.notification-box.info {
+  border-left-color: var(--chart-cyan);
 }
 
 @keyframes slideInRight {

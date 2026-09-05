@@ -3,7 +3,9 @@
     <div class="message-box" @click.stop>
       <div class="message-header">
         <span class="message-title">{{ title }}</span>
-        <button class="close-btn" @click="close">X</button>
+        <button class="icon-close" @click="close">
+          <X :size="16" />
+        </button>
       </div>
       <div class="message-content">
         <div v-if="icon" class="message-icon">
@@ -12,8 +14,8 @@
         <div class="message-text">{{ message }}</div>
       </div>
       <div class="message-actions">
-        <button class="confirm-btn" @click="confirm">{{ confirmText }}</button>
         <button v-if="showCancel" class="cancel-btn" @click="cancel">{{ cancelText }}</button>
+        <button class="confirm-btn" @click="confirm">{{ confirmText }}</button>
       </div>
     </div>
   </div>
@@ -21,6 +23,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import { X } from 'lucide-vue-next';
 
 interface Props {
   show: boolean;
@@ -86,11 +89,9 @@ const close = () => {
 <style scoped>
 .message-box-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.5);
+  inset: 0;
+  background-color: rgba(9, 14, 22, 0.45);
+  backdrop-filter: blur(2px);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -98,79 +99,48 @@ const close = () => {
 }
 
 .message-box {
-  background-color: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  min-width: 300px;
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  min-width: 320px;
   max-width: 500px;
   overflow: hidden;
-}
-
-.dark .message-box {
-  background-color: #2d3748;
-  color: #e2e8f0;
+  color: var(--text-1);
 }
 
 .message-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px;
-  border-bottom: 1px solid #e2e8f0;
-  background-color: #f8fafc;
-}
-
-.dark .message-header {
-  border-bottom: 1px solid #4a5568;
-  background-color: #1a202c;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
 }
 
 .message-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
-  color: #1e293b;
+  color: var(--text-1);
 }
 
-.dark .message-title {
-  color: #e2e8f0;
-}
-
-.close-btn {
-  background: #fef2f2; /* 浅红色背景 */
-  border: 1px solid #ddd6fe; /* 红色系边框 */
-  font-size: 16px; /* 调整字体大小 */
-  cursor: pointer;
-  color: #dc2626; /* 红色文字 */
-  padding: 0;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%; /* 圆形 */
-  font-weight: bold;
-  box-sizing: border-box;
-  margin: 0;
-  display: flex;
+/* 统一的幽灵关闭按钮 */
+.icon-close {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  line-height: 1; /* 确保行高为1以实现垂直居中 */
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.close-btn:hover {
-  background-color: #fecaca; /* 悬停时的浅红色背景 */
-  color: #dc2626; /* 悬停时的深红色 */
-  border-color: #fca5a5; /* 悬停时的红色边框 */
-}
-
-/* 暗色主题下的关闭按钮样式 */
-.dark .close-btn {
-  background: #3f3f46; /* 暗灰色背景 */
-  border: 1px solid #52525b; /* 暗灰边框 */
-  color: #f43f5e; /* 红色文字 */
-}
-
-.dark .close-btn:hover {
-  background-color: #52525b; /* 悬停时的暗灰色 */
-  color: #fb7185; /* 悬停时的浅红色 */
-  border-color: #7f1d1d; /* 暗红边框 */
+.icon-close:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-1);
 }
 
 .message-content {
@@ -193,69 +163,48 @@ const close = () => {
 
 .message-text {
   flex: 1;
-  color: #334155;
-  line-height: 1.5;
-}
-
-.dark .message-text {
-  color: #cbd5e0;
+  color: var(--text-1);
+  line-height: 1.55;
+  font-size: 13.5px;
 }
 
 .message-actions {
   display: flex;
   justify-content: flex-end;
-  padding: 16px;
+  padding: 14px 20px;
   gap: 8px;
-  border-top: 1px solid #e2e8f0;
-  background-color: #f8fafc;
 }
 
-.dark .message-actions {
-  border-top: 1px solid #4a5568;
-  background-color: #1a202c;
-}
-
-.confirm-btn, .cancel-btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 4px;
+.confirm-btn,
+.cancel-btn {
+  height: 32px;
+  padding: 0 16px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
+  font-family: inherit;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
 .confirm-btn {
-  background-color: #3b82f6;
-  color: white;
+  background-color: var(--accent);
+  color: #ffffff;
+  border: 1px solid transparent;
 }
 
 .confirm-btn:hover {
-  background-color: #2563eb;
+  background-color: var(--accent-hover);
 }
 
 .cancel-btn {
-  background-color: #e2e8f0;
-  color: #475569;
+  background-color: var(--bg-panel);
+  color: var(--text-2);
+  border: 1px solid var(--border-strong);
 }
 
 .cancel-btn:hover {
-  background-color: #cbd5e0;
-}
-
-.dark .confirm-btn {
-  background-color: #4c6ef5;
-}
-
-.dark .confirm-btn:hover {
-  background-color: #3b5bdb;
-}
-
-.dark .cancel-btn {
-  background-color: #4a5568;
-  color: #e2e8f0;
-}
-
-.dark .cancel-btn:hover {
-  background-color: #718096;
+  color: var(--text-1);
+  border-color: var(--accent);
 }
 </style>

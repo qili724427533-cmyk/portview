@@ -18,9 +18,17 @@ export interface TcpConnection {
 }
 
 // get_connections 返回快照：图标按 exe_path 去重，避免每行重复传输
+export interface NetRate {
+  down_bps: number; // 系统下载速率（字节/秒）
+  up_bps: number; // 系统上传速率（字节/秒）
+  total_down: number; // 会话累计下载（字节，应用启动以来）
+  total_up: number; // 会话累计上传（字节，应用启动以来）
+}
+
 export interface ConnectionsSnapshot {
   connections: TcpConnection[];
   icons: Record<string, string>;
+  net_rate: NetRate;
 }
 
 // 进程详情类型定义

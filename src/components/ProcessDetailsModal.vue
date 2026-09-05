@@ -17,27 +17,28 @@
           <h3>{{ t("modal.processDetails") }}</h3>
         </div>
         <button
-          class="close-button"
+          class="icon-close"
           @click="emit('update:showProcessDetails', false)"
+          :title="t('modal.processDetails')"
         >
-          X
+          <X :size="16" />
         </button>
       </div>
       <div v-if="processDetails" class="process-details">
         <p>
-          <strong>{{ t("modal.pid") }}:</strong>
+          <strong>{{ t("modal.pid") }}</strong>
           <span>{{ processDetails.pid }}</span>
         </p>
         <p>
-          <strong>{{ t("modal.name") }}:</strong>
+          <strong>{{ t("modal.name") }}</strong>
           <span>{{ processDetails.name }}</span>
         </p>
         <p>
-          <strong>{{ t("modal.commandLine") }}:</strong>
+          <strong>{{ t("modal.commandLine") }}</strong>
           <span>{{ processDetails.command_line }}</span>
         </p>
         <p>
-          <strong>{{ t("modal.executablePath") }}:</strong>
+          <strong>{{ t("modal.executablePath") }}</strong>
           <span class="path-container">
             <span>{{ processDetails.executable_path }}</span>
             <button
@@ -50,24 +51,24 @@
               @click="openContainingFolder"
               :title="t('modal.openFolder')"
             >
-              <img src="/folder.svg" alt="folder" class="folder-icon" />
+              <FolderOpen :size="15" />
             </button>
           </span>
         </p>
         <p>
-          <strong>{{ t("modal.memoryUsage") }}:</strong>
+          <strong>{{ t("modal.memoryUsage") }}</strong>
           <span>{{ formatMemoryUsage(processDetails.memory_usage) }}</span>
         </p>
         <p>
-          <strong>{{ t("modal.cpuUsage") }}:</strong>
+          <strong>{{ t("modal.cpuUsage") }}</strong>
           <span>{{ processDetails.cpu_usage }}%</span>
         </p>
         <p>
-          <strong>{{ t("modal.parentPid") }}:</strong>
+          <strong>{{ t("modal.parentPid") }}</strong>
           <span>{{ processDetails.parent_pid }}</span>
         </p>
         <p>
-          <strong>{{ t("modal.startTime") }}:</strong>
+          <strong>{{ t("modal.startTime") }}</strong>
           <span>{{ formatDate(processDetails.start_time) }}</span>
         </p>
       </div>
@@ -78,6 +79,7 @@
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
+import { X, FolderOpen } from "lucide-vue-next";
 import type { ProcessDetails } from "@/types/connection";
 
 // 定义组件属性
@@ -152,14 +154,12 @@ const formatDate = (timestamp: number | null): string => {
 </script>
 
 <style scoped>
-/* 弹窗样式 */
+/* 弹窗 */
 .modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.5);
+  inset: 0;
+  background-color: rgba(9, 14, 22, 0.45);
+  backdrop-filter: blur(2px);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -167,32 +167,31 @@ const formatDate = (timestamp: number | null): string => {
 }
 
 .modal-content {
-  background: white;
-  border-radius: 8px;
-  box-shadow:
-    0 20px 25px -5px rgba(0, 0, 0, 0.1),
-    0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
   width: 500px;
   max-width: 90vw;
   max-height: 80vh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  color: var(--text-1);
 }
 
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid #e5e7eb;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
 }
 
 .header-with-icon {
   display: flex;
   align-items: center;
   gap: 10px;
-  /* 图标与文字之间的间距 */
 }
 
 .process-icon-large {
@@ -200,171 +199,91 @@ const formatDate = (timestamp: number | null): string => {
   height: 32px;
   object-fit: contain;
   flex-shrink: 0;
-  /* 防止图标被压缩 */
 }
 
 .modal-header h3 {
   margin: 0;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
-  color: #1f2937;
+  color: var(--text-1);
 }
 
-.close-button {
-  background: #fef2f2; /* 浅红色背景 */
-  border: 1px solid #ddd6fe; /* 红色系边框 */
-  font-size: 16px; /* 调整字体大小 */
-  cursor: pointer;
-  color: #dc2626; /* 红色文字 */
-  padding: 0;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%; /* 圆形 */
-  font-weight: bold;
-  box-sizing: border-box;
-  margin: 0;
-  display: flex;
+/* 统一的幽灵关闭按钮 */
+.icon-close {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  line-height: 1;
-  /* 确保行高为1以实现垂直居中 */
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.close-button:hover {
-  background-color: #fecaca; /* 悬停时的浅红色背景 */
-  color: #dc2626; /* 悬停时的深红色 */
-  border-color: #fca5a5; /* 悬停时的红色边框 */
+.icon-close:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-1);
 }
 
 .process-details {
-  padding: 16px 20px;
+  padding: 16px 20px 20px;
   overflow-y: auto;
   flex-grow: 1;
-  padding-bottom: 20px;
-  /* 确保内容与底部有足够的间距 */
 }
 
 .process-details p {
   margin: 8px 0;
-  font-size: 14px;
-  color: #374151;
-  line-height: 1.4;
+  font-size: 13.5px;
+  color: var(--text-2);
+  line-height: 1.45;
   display: flex;
   flex-direction: column;
-  /* 将文本排列改为垂直方向 */
+  gap: 2px;
 }
 
 .process-details strong {
-  color: #1f2937;
-  min-width: 100px;
-  display: inline-block;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 500;
   word-break: break-all;
-  /* 允许在任意字符间换行 */
   overflow-wrap: break-word;
-  /* 在长单词或URL地址内部进行换行 */
 }
 
 .process-details span {
+  color: var(--text-1);
   word-break: break-all;
-  /* 允许在任意字符间换行 */
   overflow-wrap: break-word;
-  /* 在长单词或URL地址内部进行换行 */
   white-space: pre-wrap;
-  /* 保留空白符序列，但是正常换行 */
 }
 
 .path-container {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
 }
 
 .open-folder-btn {
-  background: none !important;
-  border: none !important;
-  border-radius: 4px;
-  cursor: pointer;
-  padding: 2px 6px;
-  font-size: 16px;
-  color: #3b82f6;
-  /* 蓝色文字 */
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg-panel);
+  color: var(--text-2);
+  cursor: pointer;
   flex-shrink: 0;
-  /* 防止按钮被压缩 */
-  box-shadow: none !important;
-  /* 确保没有阴影 */
-  outline: none !important;
-  /* 确保没有轮廓 */
-}
-
-.open-folder-btn .folder-icon {
-  width: 20px;
-  height: 20px;
+  transition: border-color 0.15s ease, color 0.15s ease,
+    background-color 0.15s ease;
 }
 
 .open-folder-btn:hover {
-  color: #2563eb;
-  /* 更深的蓝色 */
-  background: transparent !important;
-  /* 保持透明背景 */
-  border: none !important;
-  /* 确保边框为无 */
-  box-shadow: none !important;
-  /* 确保没有阴影 */
-}
-
-.dark .open-folder-btn {
-  color: #60a5fa;
-  /* 暗色主题下的蓝色 */
-}
-
-.dark .open-folder-btn:hover {
-  color: #3b82f6;
-  /* 暗色主题下的更深蓝色 */
-  background: transparent !important;
-  /* 保持透明背景 */
-  border: none !important;
-  /* 确保边框为无 */
-  box-shadow: none !important;
-  /* 确保没有阴影 */
-}
-
-/* 暗色主题下的弹窗样式 */
-.dark .modal-content {
-  background: #1f2937;
-  color: #e5e7eb;
-}
-
-.dark .modal-header {
-  border-bottom: 1px solid #374151;
-  color: #f3f4f6;
-}
-
-.dark .modal-header h3 {
-  color: #f3f4f6;
-  /* 确保标题文字可见 */
-}
-
-/* 暗色主题下的关闭按钮样式 */
-.dark .close-button {
-  background: #3f3f46; /* 暗灰色背景 */
-  border: 1px solid #52525b; /* 暗灰边框 */
-  color: #f43f5e; /* 红色文字 */
-}
-
-.dark .close-button:hover {
-  background-color: #52525b; /* 悬停时的暗灰色 */
-  color: #fb7185; /* 悬停时的浅红色 */
-  border-color: #7f1d1d; /* 暗红边框 */
-}
-
-.dark .process-details strong {
-  color: #f3f4f6;
-}
-
-.dark .process-details span {
-  color: #e5e7eb;
+  border-color: var(--accent);
+  color: var(--accent);
+  background-color: var(--accent-weak);
 }
 </style>

@@ -3,7 +3,9 @@
     <div class="about-modal">
       <div class="about-header">
         <h2>{{ t("about.title") }}</h2>
-        <button class="close-btn" @click="closeAbout">X</button>
+        <button class="icon-close" @click="closeAbout">
+          <X :size="16" />
+        </button>
       </div>
       <div class="about-content">
         <div class="app-logo-container">
@@ -29,6 +31,7 @@
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
 import { openUrl } from '@tauri-apps/plugin-opener';
+import { X } from "lucide-vue-next";
 
 interface Props {
   showAbout: boolean;
@@ -58,11 +61,9 @@ const openGitHub = async () => {
 <style scoped>
 .about-modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.5);
+  inset: 0;
+  background-color: rgba(9, 14, 22, 0.45);
+  backdrop-filter: blur(2px);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -70,100 +71,88 @@ const openGitHub = async () => {
 }
 
 .about-modal {
-  background-color: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
   width: 90%;
-  max-width: 500px;
+  max-width: 460px;
   max-height: 80vh;
   display: flex;
   flex-direction: column;
   position: relative;
+  color: var(--text-1);
 }
 
 .about-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid #e2e8f0;
-  background-color: #f8fafc;
-  border-radius: 8px 8px 0 0;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
 }
 
 .about-header h2 {
   margin: 0;
-  font-size: 1.25rem;
-  color: #1e293b;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-1);
 }
 
-.close-btn {
-  background: #fef2f2; /* 浅红色背景 */
-  border: 1px solid #ddd6fe; /* 红色系边框 */
-  font-size: 16px; /* 调整字体大小 */
-  cursor: pointer;
-  color: #dc2626; /* 红色文字 */
-  padding: 0;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%; /* 圆形 */
-  font-weight: bold;
-  box-sizing: border-box;
-  margin: 0;
-  display: flex;
+/* 统一的幽灵关闭按钮 */
+.icon-close {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  line-height: 1; /* 确保行高为1以实现垂直居中 */
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.close-btn:hover {
-  background-color: #fecaca; /* 悬停时的浅红色背景 */
-  color: #dc2626; /* 悬停时的深红色 */
-  border-color: #fca5a5; /* 悬停时的红色边框 */
-}
-
-/* 暗色主题下的关闭按钮样式 */
-.dark .close-btn {
-  background: #3f3f46; /* 暗灰色背景 */
-  border: 1px solid #52525b; /* 暗灰边框 */
-  color: #f43f5e; /* 红色文字 */
-}
-
-.dark .close-btn:hover {
-  background-color: #52525b; /* 悬停时的暗灰色 */
-  color: #fb7185; /* 悬停时的浅红色 */
-  border-color: #7f1d1d; /* 暗红边框 */
+.icon-close:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-1);
 }
 
 .about-content {
-  padding: 20px;
+  padding: 24px 20px;
   flex-grow: 1;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 18px;
 }
 
 .app-logo-container {
   display: flex;
   justify-content: center;
   align-items: center;
-  margin-bottom: 10px;
 }
 
 .app-logo-large {
-  width: 96px;
-  height: 96px;
+  width: 88px;
+  height: 88px;
   object-fit: contain;
 }
 
 .app-info p {
   margin: 0 0 10px 0;
-  color: #334155;
-  line-height: 1.5;
+  color: var(--text-2);
+  line-height: 1.55;
+  font-size: 13.5px;
+}
+
+.app-info strong {
+  color: var(--text-1);
+  font-weight: 600;
 }
 
 .about-content a {
-  color: #3b82f6;
+  color: var(--accent);
   text-decoration: none;
 }
 
@@ -172,78 +161,27 @@ const openGitHub = async () => {
 }
 
 .about-footer {
-  padding: 16px 20px;
-  border-top: 1px solid #e2e8f0;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
   display: flex;
   justify-content: flex-end;
-  background-color: #f8fafc;
-  border-radius: 0 0 8px 8px;
 }
 
 .ok-btn {
-  padding: 6px 16px;
-  background-color: #3b82f6;
-  color: white;
+  height: 32px;
+  padding: 0 18px;
+  background-color: var(--accent);
+  color: #ffffff;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  transition: background-color 0.15s ease;
 }
 
 .ok-btn:hover {
-  background-color: #2563eb;
-}
-
-/* 暗色主题样式 */
-.dark .about-modal {
-  background-color: #1e293b;
-  color: #e2e8f0;
-}
-
-.dark .about-header {
-  border-bottom: 1px solid #334155;
-  background-color: #334155;
-}
-
-.dark .about-header h2 {
-  color: #f8fafc;
-}
-
-.dark .about-content {
-  color: #cbd5e0;
-}
-
-.dark .about-content p {
-  color: #e2e8f0; /* 确保段落文字在暗色主题下可见 */
-}
-
-.dark .about-content a {
-  color: #60a5fa;
-}
-
-.dark .about-content a:hover {
-  color: #93c5fd;
-}
-
-.dark .about-footer {
-  border-top: 1px solid #334155;
-  background-color: #334155;
-}
-
-.dark .ok-btn {
-  background-color: #3b82f6;
-}
-
-.dark .ok-btn:hover {
-  background-color: #2563eb;
-}
-
-.dark .close-btn {
-  color: #ef4444; /* 红色 */
-}
-
-.dark .close-btn:hover {
-  background-color: #475569;
-  color: #dc2626; /* 深红色 */
+  background-color: var(--accent-hover);
 }
 </style>

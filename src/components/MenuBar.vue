@@ -1,93 +1,96 @@
 <template>
-  <!-- 主菜单容器，分为左右两组，两端对齐 -->
-  <div class="main-menu-container">
-    <div class="menu-group">
-      <label class="menu-label">{{ t("menu.protocol") }}</label>
-      <div class="protocol-buttons">
-        <button
-          :class="['protocol-btn', { active: filterProtocol === 'all' }]"
-          @click="setProtocolFilter('all')"
+  <!-- 主菜单容器：按功能分组，空间不足时自动换行 -->
+  <div class="menu-bar">
+    <div class="menu-cluster">
+      <div class="menu-group">
+        <span class="menu-label">{{ t("menu.protocol") }}</span>
+        <div class="segmented">
+          <button
+            :class="['segment-btn', { active: filterProtocol === 'all' }]"
+            @click="setProtocolFilter('all')"
+          >
+            {{ t("menu.protocolAll") }}
+          </button>
+          <button
+            :class="['segment-btn', { active: filterProtocol === 'TCP' }]"
+            @click="setProtocolFilter('TCP')"
+          >
+            {{ t("menu.protocolTCP") }}
+          </button>
+          <button
+            :class="['segment-btn', { active: filterProtocol === 'UDP' }]"
+            @click="setProtocolFilter('UDP')"
+          >
+            {{ t("menu.protocolUDP") }}
+          </button>
+        </div>
+      </div>
+
+      <div class="menu-group">
+        <span class="menu-label">{{ t("menu.state") }}</span>
+        <select
+          :value="filterState"
+          @change="handleStateChange"
+          class="control-select state-select"
         >
-          {{ t("menu.protocolAll") }}
-        </button>
-        <button
-          :class="['protocol-btn', { active: filterProtocol === 'TCP' }]"
-          @click="setProtocolFilter('TCP')"
-        >
-          {{ t("menu.protocolTCP") }}
-        </button>
-        <button
-          :class="['protocol-btn', { active: filterProtocol === 'UDP' }]"
-          @click="setProtocolFilter('UDP')"
-        >
-          {{ t("menu.protocolUDP") }}
-        </button>
+          <option value="all">{{ t("menu.stateAll") }}</option>
+          <option value="LISTEN">{{ t("menu.stateListen") }}</option>
+          <option value="ESTABLISHED">{{ t("menu.stateEstablished") }}</option>
+          <option value="TIME_WAIT">{{ t("menu.stateTimeWait") }}</option>
+          <option value="CLOSE_WAIT">{{ t("menu.stateCloseWait") }}</option>
+          <option value="SYN_SENT">{{ t("menu.stateSynSent") }}</option>
+          <option value="SYN_RECV">{{ t("menu.stateSynRecv") }}</option>
+          <option value="FIN_WAIT1">{{ t("menu.stateFinWait1") }}</option>
+          <option value="FIN_WAIT2">{{ t("menu.stateFinWait2") }}</option>
+          <option value="LAST_ACK">{{ t("menu.stateLastAck") }}</option>
+          <option value="CLOSING">{{ t("menu.stateClosing") }}</option>
+          <option value="UNCONN">{{ t("menu.stateUnconn") }}</option>
+        </select>
       </div>
     </div>
 
-    <div class="menu-group">
-      <label class="menu-label">{{ t("menu.state") }}</label>
-      <select
-        :value="filterState"
-        @change="handleStateChange"
-        class="state-select"
-      >
-        <option value="all">{{ t("menu.stateAll") }}</option>
-        <option value="LISTEN">{{ t("menu.stateListen") }}</option>
-        <option value="ESTABLISHED">
-          {{ t("menu.stateEstablished") }}
-        </option>
-        <option value="TIME_WAIT">{{ t("menu.stateTimeWait") }}</option>
-        <option value="CLOSE_WAIT">{{ t("menu.stateCloseWait") }}</option>
-        <option value="SYN_SENT">{{ t("menu.stateSynSent") }}</option>
-        <option value="SYN_RECV">{{ t("menu.stateSynRecv") }}</option>
-        <option value="FIN_WAIT1">{{ t("menu.stateFinWait1") }}</option>
-        <option value="FIN_WAIT2">{{ t("menu.stateFinWait2") }}</option>
-        <option value="LAST_ACK">{{ t("menu.stateLastAck") }}</option>
-        <option value="CLOSING">{{ t("menu.stateClosing") }}</option>
-        <option value="UNCONN">{{ t("menu.stateUnconn") }}</option>
-      </select>
+    <div class="menu-cluster">
+      <div class="menu-group">
+        <span class="menu-label">{{ t("menu.searchProcess") }}</span>
+        <input
+          type="text"
+          :value="searchProcessName"
+          @input="handleSearchProcessInput"
+          :placeholder="t('menu.searchPlaceholder')"
+          class="control-input"
+        />
+      </div>
+
+      <div class="menu-group">
+        <span class="menu-label">{{ t("menu.searchLocalPort") }}</span>
+        <input
+          type="text"
+          :value="searchLocalPort"
+          @input="handleSearchLocalPortInput"
+          :placeholder="t('menu.localPortPlaceholder')"
+          class="control-input control-input--port"
+        />
+      </div>
     </div>
 
-    <div class="menu-group">
-      <label class="menu-label">{{ t("menu.searchProcess") }}</label>
-      <input
-        type="text"
-        :value="searchProcessName"
-        @input="handleSearchProcessInput"
-        :placeholder="t('menu.searchPlaceholder')"
-        class="menu-search"
-      />
-    </div>
-
-    <div class="menu-group">
-      <label class="menu-label">{{ t("menu.searchLocalPort") }}</label>
-      <input
-        type="text"
-        :value="searchLocalPort"
-        @input="handleSearchLocalPortInput"
-        :placeholder="t('menu.localPortPlaceholder')"
-        class="menu-search"
-      />
-    </div>
-
-    <div class="menu-group">
-      <label class="menu-label">{{ t("menu.autoRefresh") }}</label>
-      <div class="refresh-controls">
+    <div class="menu-cluster">
+      <div class="menu-group">
+        <span class="menu-label">{{ t("menu.autoRefresh") }}</span>
         <button
-          :class="['refresh-toggle-btn', { active: isAutoRefreshEnabled }]"
+          :class="['control-btn', 'refresh-toggle-btn', { active: isAutoRefreshEnabled }]"
           @click="toggleAutoRefresh"
         >
-          {{
-            isAutoRefreshEnabled
-              ? t("menu.refreshStop")
-              : t("menu.refreshStart")
-          }}
+          <RefreshCw
+            class="btn-icon"
+            :class="{ spinning: isAutoRefreshEnabled }"
+            :size="13"
+          />
+          {{ isAutoRefreshEnabled ? t("menu.refreshStop") : t("menu.refreshStart") }}
         </button>
         <select
           :value="selectedRefreshInterval"
           @change="handleRefreshIntervalChange"
-          class="refresh-interval-select"
+          class="control-select refresh-interval-select"
           :disabled="!isAutoRefreshEnabled"
         >
           <option
@@ -100,41 +103,40 @@
         </select>
       </div>
     </div>
-    <div class="menu-group">
-      <label class="menu-label">{{ t("menu.language") }}</label>
-      <select
-        :value="$i18n.locale"
-        @change="handleLanguageChange"
-        class="lang-select"
-      >
-        <option value="zh">{{ t("zh") }}</option>
-        <option value="en">{{ t("en") }}</option>
-      </select>
-    </div>
-    <div class="menu-group">
-      <label class="menu-label">{{ t("menu.theme") }}</label>
-      <button
-        class="theme-toggle-btn"
-        @click="handleThemeToggle"
-        :title="isDarkMode ? t('menu.lightTheme') : t('menu.darkTheme')"
-      >
-        {{ isDarkMode ? t("menu.lightTheme") : t("menu.darkTheme") }}
-      </button>
-    </div>
-    <div class="menu-group">
-      <button
-        class="about-btn"
-        @click="showAboutDialog"
-        :title="t('menu.about')"
-      >
-        {{ t("menu.about") }}
-      </button>
+
+    <div class="menu-cluster">
+      <div class="menu-group">
+        <span class="menu-label">{{ t("menu.language") }}</span>
+        <select
+          :value="$i18n.locale"
+          @change="handleLanguageChange"
+          class="control-select lang-select"
+        >
+          <option value="zh">{{ t("zh") }}</option>
+          <option value="en">{{ t("en") }}</option>
+        </select>
+      </div>
+
+      <div class="menu-group">
+        <button
+          class="icon-btn"
+          @click="handleThemeToggle"
+          :title="isDarkMode ? t('menu.lightTheme') : t('menu.darkTheme')"
+        >
+          <Sun v-if="isDarkMode" :size="15" />
+          <Moon v-else :size="15" />
+        </button>
+        <button class="control-btn about-btn" @click="showAboutDialog">
+          {{ t("menu.about") }}
+        </button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
+import { RefreshCw, Sun, Moon } from "lucide-vue-next";
 
 // 定义组件属性
 interface Props {
@@ -176,28 +178,8 @@ const setProtocolFilter = (protocol: "all" | "TCP" | "UDP") => {
   emit('setProtocolFilter', protocol);
 };
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const applyFiltersAndSearch = () => {
-  emit('applyFiltersAndSearch');
-};
-
 const toggleAutoRefresh = () => {
   emit('toggleAutoRefresh');
-};
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const changeRefreshInterval = (interval: number) => {
-  emit('changeRefreshInterval', interval);
-};
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const changeLanguage = (lang: "zh" | "en") => {
-  emit('changeLanguage', lang);
-};
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const toggleTheme = () => {
-  emit('toggleTheme');
 };
 
 const showAboutDialog = () => {
@@ -242,370 +224,204 @@ const handleThemeToggle = () => {
 </script>
 
 <style scoped>
-/* 主菜单容器样式 - 用于将左右菜单组两端对齐 */
-.main-menu-container {
+/* 主菜单容器：单行排列，窗口宽度不足时允许被裁剪（保持原有行为） */
+.menu-bar {
   display: flex;
-  justify-content: flex-start; /* 改为flex-start，使用margin-left: auto来分离元素 */
   align-items: center;
+  flex-wrap: nowrap;
+  min-width: fit-content;
   width: 100%;
-  padding: 6px 10px; /* 恢复左右padding以提供内边距 */
-  background-color: #e2e8f0;
-  border-bottom: 1px solid #cbd5e1;
-  box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.12),
-    0 1px 2px rgba(0, 0, 0, 0.24);
-  min-height: 32px;
-  position: sticky; /* 使菜单栏固定在顶部 */
-  top: 0; /* 固定在顶部 */
-  z-index: 100; /* 确保菜单栏在其他内容之上 */
-  flex-wrap: nowrap; /* 防止换行 */
-  min-width: fit-content; /* 确保菜单栏宽度适应内容 */
+  padding: 7px 10px;
+  background-color: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+/* 功能分组，竖线分隔 */
+.menu-cluster {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 14px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.menu-cluster + .menu-cluster {
+  border-left: 1px solid var(--border);
+}
+
+/* 第一组贴近窗口左缘，减少整体左缩进 */
+.menu-cluster:first-child {
+  padding-left: 4px;
 }
 
 .menu-group {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-shrink: 0; /* 防止菜单组被压缩 */
-  flex-wrap: nowrap; /* 防止组内元素换行 */
-  white-space: nowrap; /* 防止文字换行 */
-  min-width: fit-content; /* 确保内容适应其内容 */
-  padding-right: 10px;
-}
-
-/* 特别针对包含主题和语言选择的菜单组 */
-.menu-group:last-child {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-  flex-wrap: nowrap;
+  gap: 6px;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .menu-label {
-  font-size: 0.8rem;
-  color: #334155;
+  font-size: 12px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+/* ===== 通用控件 ===== */
+.control-input,
+.control-select,
+.control-btn {
+  height: var(--control-height);
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-panel);
+  color: var(--text-1);
+  font-size: 12px;
+  font-family: inherit;
+  transition: border-color 0.15s ease, background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.control-input {
+  width: 130px;
+  color: var(--text-1);
+}
+
+.control-input::placeholder {
+  color: var(--text-3);
+}
+
+.control-input--port {
+  width: 90px;
+}
+
+.control-input:focus,
+.control-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-weak);
+}
+
+.control-input:hover,
+.control-select:hover:not(:disabled),
+.control-btn:hover {
+  border-color: var(--accent);
+}
+
+.control-select {
+  cursor: pointer;
+}
+
+.control-select:disabled {
+  background-color: var(--bg-subtle);
+  color: var(--text-3);
+  cursor: not-allowed;
+}
+
+.control-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  cursor: pointer;
   font-weight: 500;
   white-space: nowrap;
 }
 
-.protocol-buttons {
-  display: flex;
-  gap: 2px;
+.control-btn:active {
+  transform: translateY(0.5px);
 }
 
-.protocol-btn {
-  padding: 3px 8px;
-  border: 1px solid #cbd5e1;
-  background-color: #e2e8f0;
-  color: #475569;
-  font-size: 0.75rem;
-  border-radius: 3px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  min-width: 40px;
-  text-align: center;
+.btn-icon {
+  flex-shrink: 0;
+}
+
+.btn-icon.spinning {
+  animation: pv-spin 1.2s linear infinite;
+}
+
+/* ===== 协议分段按钮 ===== */
+.segmented {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  height: var(--control-height);
+}
+
+.segment-btn {
+  padding: 0 12px;
+  border: none;
+  background-color: var(--bg-panel);
+  color: var(--text-2);
+  font-size: 12px;
+  font-family: inherit;
   font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.protocol-btn:hover {
-  background-color: #f1f5f9;
-  border-color: #94a3b8;
-  color: #334155;
+.segment-btn + .segment-btn {
+  border-left: 1px solid var(--border);
 }
 
-.protocol-btn.active {
-  background-color: #f8fafc;
-  color: #1e293b;
-  border: 1px solid #94a3b8;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+.segment-btn:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-1);
+}
+
+.segment-btn.active {
+  background-color: var(--accent);
+  color: #ffffff;
   font-weight: 600;
 }
 
-.menu-search {
-  padding: 3px 6px;
-  border: 1px solid #94a3b8;
-  border-radius: 3px;
-  font-size: 0.75rem;
-  background-color: #ffffff;
-  color: #1e293b;
-  min-width: 100px; /* 减少最小宽度以节省空间 */
-  max-width: 150px; /* 限制最大宽度 */
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
-  flex-shrink: 0; /* 防止搜索框被压缩 */
-}
-
-.menu-search:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
-}
-
-.refresh-controls {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  flex-shrink: 0; /* 防止刷新控件被压缩 */
-  flex: none; /* 禁止伸缩 */
-}
-
-.refresh-toggle-btn {
-  padding: 3px 8px;
-  border: 1px solid #cbd5e1;
-  background-color: #e2e8f0;
-  color: #475569;
-  font-size: 0.75rem;
-  border-radius: 3px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  min-width: 40px;
-  text-align: center;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 500;
-}
-
-.refresh-toggle-btn:hover {
-  background-color: #f1f5f9;
-  border-color: #94a3b8;
-  color: #334155;
-}
-
+/* ===== 自动刷新激活态 ===== */
 .refresh-toggle-btn.active {
-  background-color: #10b981; /* 绿色表示激活状态 */
-  color: white;
-  border: 1px solid #059669;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+  background-color: var(--success-weak);
+  border-color: var(--success);
+  color: var(--success);
   font-weight: 600;
+}
+
+/* ===== 图标按钮（主题切换） ===== */
+.icon-btn {
+  height: var(--control-height);
+  width: var(--control-height);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-panel);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.icon-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background-color: var(--accent-weak);
+}
+
+/* ===== 下拉宽度微调 ===== */
+.state-select {
+  min-width: 96px;
+}
+
+.lang-select {
+  min-width: 84px;
 }
 
 .refresh-interval-select {
-  padding: 2px 4px;
-  border: 1px solid #94a3b8;
-  border-radius: 3px;
-  font-size: 0.75rem;
-  background-color: #ffffff;
-  color: #1e293b;
-  min-width: 60px;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
-}
-
-.refresh-interval-select:disabled {
-  background-color: #e2e8f0;
-  color: #94a3b8;
-  cursor: not-allowed;
-}
-
-/* 语言切换下拉框样式 */
-.lang-select {
-  padding: 3px 8px;
-  border: 1px solid #cbd5e1;
-  color: #475569;
-  font-size: 0.75rem;
-  border-radius: 3px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  min-width: 80px;
-  font-weight: 500;
-  background-color: #e2e8f0;
-}
-
-.lang-select:hover {
-  background-color: #f1f5f9;
-  border-color: #94a3b8;
-  color: #334155;
-}
-
-.lang-select:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
-}
-
-.state-select {
-  padding: 3px 8px;
-  border: 1px solid #cbd5e1;
-  color: #475569;
-  font-size: 0.75rem;
-  border-radius: 3px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  min-width: 80px;
-  font-weight: 500;
-  background-color: #e2e8f0;
-}
-
-.state-select:hover {
-  background-color: #f1f5f9;
-  border-color: #94a3b8;
-  color: #334155;
-}
-
-.state-select:focus {
-  outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
-}
-
-/* 主题切换按钮样式 */
-.theme-toggle-btn {
-  padding: 3px 8px;
-  border: 1px solid #cbd5e1;
-  background-color: #e2e8f0;
-  color: #475569;
-  font-size: 0.75rem;
-  border-radius: 3px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  min-width: fit-content;
-  text-align: center;
-  font-weight: 500;
-}
-
-.theme-toggle-btn:hover {
-  background-color: #f1f5f9;
-  border-color: #94a3b8;
-  color: #334155;
-}
-
-/* 暗色主题样式 */
-.dark .theme-toggle-btn {
-  background-color: #2d3748; /* 深中灰蓝 */
-  color: #a0aec0; /* 中等亮度的灰蓝 */
-  border: 1px solid #4a5568; /* 中灰蓝 */
-}
-
-.dark .theme-toggle-btn:hover {
-  background-color: #4a5568; /* 中灰蓝 */
-  border-color: #718096; /* 浅中灰 */
-  color: #e2e8f0; /* 浅灰蓝 */
-}
-
-/* 关于按钮样式 */
-.about-btn {
-  padding: 3px 8px;
-  border: 1px solid #cbd5e1;
-  background-color: #e2e8f0;
-  color: #475569;
-  font-size: 0.75rem;
-  border-radius: 3px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  min-width: fit-content;
-  text-align: center;
-  font-weight: 500;
-}
-
-.about-btn:hover {
-  background-color: #f1f5f9;
-  border-color: #94a3b8;
-  color: #334155;
-}
-
-/* 暗色主题样式 */
-.dark .about-btn {
-  background-color: #2d3748; /* 深中灰蓝 */
-  color: #a0aec0; /* 中等亮度的灰蓝 */
-  border: 1px solid #4a5568; /* 中灰蓝 */
-}
-
-.dark .about-btn:hover {
-  background-color: #4a5568; /* 中灰蓝 */
-  border-color: #718096; /* 浅中灰 */
-  color: #e2e8f0; /* 浅灰蓝 */
-}
-
-/* 暗色主题样式 */
-.dark .main-menu-container {
-  background-color: #1a202c; /* 深灰蓝 */
-  color: #a0aec0; /* 中等亮度的灰蓝，确保可读性 */
-  border-bottom: 2px solid #2d3748; /* 深中灰蓝 */
-}
-
-.dark .menu-label {
-  color: #a0aec0; /* 中等亮度的灰蓝，与菜单栏文字颜色一致 */
-}
-
-.dark .protocol-btn {
-  background-color: #2d3748; /* 深中灰蓝 */
-  color: #a0aec0; /* 中等亮度的灰蓝 */
-  border: 1px solid #4a5568; /* 中灰蓝 */
-}
-
-.dark .protocol-btn:hover {
-  background-color: #4a5568; /* 中灰蓝 */
-  border-color: #718096; /* 浅中灰 */
-  color: #cbd5e0; /* 浅灰蓝 */
-}
-
-.dark .protocol-btn.active {
-  background-color: #4c6ef5; /* 深蓝色 */
-  color: #e2e8f0; /* 浅灰蓝 */
-  border: 1px solid #6c8aee; /* 浅蓝色 */
-}
-
-.dark .menu-search {
-  background-color: #0f1419; /* 极深的灰蓝 */
-  color: #a0aec0; /* 中等亮度的灰蓝 */
-  border: 1px solid #4a5568; /* 中灰蓝 */
-}
-
-.dark .menu-search:focus {
-  border-color: #4c6ef5; /* 深蓝色，与整体风格一致 */
-  box-shadow: 0 0 0 2px rgba(76, 110, 245, 0.3); /* 深蓝色透明阴影 */
-}
-
-.dark .refresh-toggle-btn {
-  background-color: #2d3748; /* 深中灰蓝 */
-  color: #a0aec0; /* 中等亮度的灰蓝 */
-  border: 1px solid #4a5568; /* 中灰蓝 */
-}
-
-.dark .refresh-toggle-btn:hover {
-  background-color: #4a5568; /* 中灰蓝 */
-  border-color: #718096; /* 浅中灰 */
-  color: #cbd5e0; /* 浅灰蓝 */
-}
-
-.dark .refresh-toggle-btn.active {
-  background-color: #38a169; /* 深橄榄绿 */
-  color: #e2e8f0; /* 浅灰蓝 */
-  border: 1px solid #4ea27a; /* 浅橄榄绿 */
-}
-
-/* 菜单栏中select元素的暗色主题样式 */
-.dark .lang-select,
-.dark .state-select,
-.dark .refresh-interval-select {
-  background-color: #2d3748; /* 深中灰蓝 */
-  color: #a0aec0; /* 中等亮度的灰蓝 */
-  border: 1px solid #4a5568; /* 中灰蓝 */
-}
-
-.dark .lang-select:hover,
-.dark .state-select:hover,
-.dark .refresh-interval-select:hover {
-  background-color: #4a5568; /* 中灰蓝 */
-  border-color: #718096; /* 浅中灰 */
-  color: #e2e8f0; /* 浅灰蓝 */
-}
-
-.dark .lang-select:focus,
-.dark .state-select:focus,
-.dark .refresh-interval-select:focus {
-  outline: none;
-  border-color: #4c6ef5; /* 深蓝色 */
-  box-shadow: 0 0 0 2px rgba(76, 110, 245, 0.3); /* 深蓝色透明阴影 */
-}
-
-.dark .refresh-interval-select:disabled {
-  background-color: #4a5568; /* 中灰蓝 */
-  color: #718096; /* 中灰 */
-  cursor: not-allowed;
+  min-width: 68px;
 }
 </style>

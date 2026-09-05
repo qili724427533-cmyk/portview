@@ -1,7 +1,25 @@
 <template>
   <div class="connections-table-container">
     <div class="table-wrapper">
-      <table class="connections-table">
+      <!-- 首次加载骨架屏 -->
+      <div v-if="isLoading && connections.length === 0" class="table-skeleton">
+        <div
+          v-for="(width, i) in skeletonWidths"
+          :key="i"
+          class="skeleton-row"
+        >
+          <span class="skeleton-bar" :style="{ width: width + '%' }"></span>
+        </div>
+      </div>
+
+      <!-- 空状态 -->
+      <div v-else-if="connections.length === 0" class="table-empty">
+        <Globe class="empty-icon" :size="40" :stroke-width="1.5" />
+        <p class="empty-title">{{ t("table.emptyTitle") }}</p>
+        <p class="empty-hint">{{ t("table.emptyHint") }}</p>
+      </div>
+
+      <table v-else class="connections-table">
         <thead>
           <tr>
             <th
@@ -195,6 +213,7 @@
 <script setup lang="ts">
 import { computed, watch, nextTick, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
+import { Globe } from "lucide-vue-next";
 import type { TcpConnection, SortColumn, SortDirection } from "@/types/connection";
 
 // 定义组件属性
@@ -204,6 +223,7 @@ interface Props {
   sortColumn: string | null;
   sortDirection: SortDirection;
   customColumnWidths: Record<string, number>;
+  isLoading?: boolean;
 }
 
 const props = defineProps<Props>();
@@ -232,6 +252,9 @@ const sortDirection = computed(() => props.sortDirection);
 
 // 列宽相关
 const customColumnWidths = computed(() => props.customColumnWidths);
+
+// 骨架屏每行的占位宽度（百分比）
+const skeletonWidths = [92, 38, 52, 68, 30, 60, 42, 78, 34, 64, 46, 72];
 
 // 在组件挂载后应用列宽
 onMounted(() => {
@@ -286,20 +309,8 @@ const startColumnResize = (event: MouseEvent, columnIndex: number) => {
   // 获取当前列的宽度
   dragStartWidth = thElement.offsetWidth;
 
-  // 获取所有列的初始宽度
-  const thElements = document.querySelectorAll(".connections-table th");
-  const initialColumnWidths: number[] = [];
-  thElements.forEach((th) => {
-    initialColumnWidths.push((th as HTMLElement).offsetWidth);
-  });
-
-  // 获取表格的初始宽度
-  const table = document.querySelector(".connections-table") as HTMLElement;
-  if (table) {
-    // initialTableWidth = table.offsetWidth; // 暂时未使用
-  }
-
   // 添加resizing类到表格
+  const table = document.querySelector(".connections-table") as HTMLElement;
   if (table) {
     table.classList.add("resizing");
   }
@@ -550,170 +561,145 @@ const formatDate = (timestamp: number | null): string => {
 <style scoped>
 .connections-table-container {
   width: 100%;
-  overflow-x: auto; /* 当内容超出宽度时显示横向滚动条 */
-  overflow-y: auto; /* 当内容超出高度时显示纵向滚动条 */
-  flex: 1 1 auto; /* 允许增长、收缩，基础大小为自动 */
+  overflow-x: auto;
+  overflow-y: auto;
+  flex: 1 1 auto;
   margin-top: 0;
-  min-height: 0; /* 允许容器收缩 */
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  background-color: var(--bg-panel);
 }
 
 .table-wrapper {
   width: 100%;
   display: block;
-  flex: 1; /* 让表格填充可用空间 */
-  min-height: 0; /* 允许内容收缩 */
-  overflow-y: auto; /* 垂直滚动 */
-  min-width: 100%; /* 确保表格至少占满容器宽度 */
-  overflow-x: auto; /* 水平滚动，允许表格不完全填充容器 */
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  min-width: 100%;
+  overflow-x: auto;
+  position: relative;
 }
 
 .connections-table {
-  width: fit-content; /* 根据内容调整宽度 */
-  min-width: 100%; /* 至少占满容器宽度，但可以更宽 */
+  width: fit-content;
+  min-width: 100%;
   border-collapse: collapse;
-  font-size: 0.85em; /* 略微减小字体以适应紧凑设计 */
+  font-size: 13px;
   border: none;
   border-radius: 0;
-  table-layout: fixed; /* 使用fixed布局以精确控制列宽 */
-  flex-shrink: 0; /* 防止表格被压缩 */
-  margin-bottom: 0; /* 确保表格紧贴容器底部 */
-  display: table; /* 使用表格显示 */
-  max-width: none; /* 不限制表格最大宽度，允许水平滚动 */
+  table-layout: fixed;
+  flex-shrink: 0;
+  margin-bottom: 0;
+  display: table;
+  max-width: none;
+  color: var(--text-1);
 }
 
 .connections-table thead tr {
-  background-color: #f9fafb;
-  color: #111827;
+  background-color: var(--bg-subtle);
+  color: var(--text-2);
   text-align: left;
   font-weight: 600;
-  border-bottom: 2px solid #e5e7eb;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border-strong);
   height: 24px;
-  position: sticky; /* 固定表头 */
-  top: 0; /* 固定在顶部 */
-  z-index: 10; /* 确保表头在内容之上 */
-  display: table-row; /* 确保sticky在表格行上正确工作 */
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: table-row;
 }
 
 .connections-table tbody {
-  display: table-row-group; /* 确保tbody正确显示 */
+  display: table-row-group;
 }
 
 .connections-table th,
 .connections-table td {
-  padding: 2px 3px; /* 左右padding 3px */
+  padding: 2px 3px;
   text-align: left;
-  border-bottom: 1px solid #e5e7eb;
-  color: #111827;
+  border-bottom: 1px solid var(--border);
+  color: inherit;
   line-height: 1.2;
   height: 24px;
   vertical-align: middle;
-  white-space: nowrap; /* 防止文本换行 */
-  overflow: hidden; /* 防止内容溢出 */
-  word-break: keep-all; /* 防止单词内断行 */
-  text-overflow: ellipsis; /* 超出部分显示省略号 */
+  white-space: nowrap;
+  overflow: hidden;
+  word-break: keep-all;
+  text-overflow: ellipsis;
 }
 
-.connections-table th {
-  min-width: max-content; /* 表头列宽自适应内容 */
+/* 列分隔线（末列/填充列除外） */
+.connections-table th:not(:last-child),
+.connections-table td:not(:last-child) {
+  border-right: 1px solid var(--border-strong);
 }
 
-.connections-table td {
-  min-width: max-content; /* 数据列宽自适应内容 */
+.connections-table tbody tr {
+  background-color: var(--bg-panel);
+  transition: background-color 0.25s ease;
 }
 
 .connections-table tbody tr:nth-of-type(even) {
-  background-color: #f8fafc;
-}
-
-.connections-table tbody tr:nth-of-type(odd) {
-  background-color: #ffffff;
+  background-color: var(--bg-subtle);
 }
 
 .connections-table tbody tr:hover {
-  background-color: #f1f5f9;
+  background-color: var(--bg-hover);
+}
+
+/* ===== 行状态：左侧色条 + 低饱和底色 ===== */
+.connections-table tbody tr.new-connection {
+  background-color: var(--success-weak);
+}
+
+.connections-table tbody tr.new-connection td:first-child {
+  box-shadow: inset 3px 0 0 var(--success);
+}
+
+.connections-table tbody tr.changed-connection {
+  background-color: var(--warning-weak);
+}
+
+.connections-table tbody tr.changed-connection td:first-child {
+  box-shadow: inset 3px 0 0 var(--warning);
+}
+
+.connections-table tbody tr.deleted-connection {
+  background-color: var(--danger-weak);
+}
+
+.connections-table tbody tr.deleted-connection td:first-child {
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+.connections-table tbody tr.deleted-connection td {
+  color: var(--text-2);
+  text-decoration: line-through;
 }
 
 .connections-table tbody tr.selected-row {
-  background-color: #3b82f6 !important; /* 蓝色背景 */
+  background-color: var(--accent-weak);
 }
 
-.connections-table tbody tr.selected-row td,
-.connections-table tbody tr.selected-row th {
-  color: white !important; /* 白色文字以提高对比度 */
+.connections-table tbody tr.selected-row td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
-/* 确保选中行样式具有足够高的特异性 */
-tbody tr.selected-row {
-  background-color: #3b82f6 !important; /* 蓝色背景 */
-}
-
-tbody tr.selected-row td,
-tbody tr.selected-row th {
-  color: white !important; /* 白色文字以提高对比度 */
-}
-
-/* 新增连接项样式 */
-.connections-table tbody tr.new-connection {
-  background-color: #4ade80 !important; /* 绿色背景表示新增连接 */
-  transition: background-color 2s ease; /* 2秒过渡效果 */
-}
-
-.connections-table tbody tr.new-connection td,
-.connections-table tbody tr.new-connection th {
-  color: #166534 !important; /* 深绿色文字 */
-}
-
-/* 状态变化的连接项样式 */
-.connections-table tbody tr.changed-connection {
-  background-color: #fbbf24 !important; /* 琥珀色背景表示状态变化 */
-  transition: background-color 2s ease; /* 2秒过渡效果 */
-}
-
-.connections-table tbody tr.changed-connection td,
-.connections-table tbody tr.changed-connection th {
-  color: #78350f !important; /* 深琥珀色文字 */
-}
-
-/* 即将删除的连接项样式 */
-.connections-table tbody tr.deleted-connection {
-  background-color: #f87171 !important; /* 红色背景表示即将删除的连接 */
-  transition: background-color 2s ease; /* 2秒过渡效果 */
-  opacity: 0.7; /* 稍微透明表示即将删除 */
-}
-
-.connections-table tbody tr.deleted-connection td,
-.connections-table tbody tr.deleted-connection th {
-  color: #991b1b !important; /* 深红色文字 */
-  text-decoration: line-through; /* 删除线效果 */
-}
-
-/* 为除了最后一列之外的所有列添加右边框作为分割线 */
-.connections-table th:not(:last-child),
-.connections-table td:not(:last-child) {
-  border-right: 1px solid #d1d5db;
+.connections-table tbody tr.selected-row td {
+  color: var(--text-1);
 }
 
 /* 冗余列样式 - 填充剩余空间 */
-.filler-column {
-  width: 100%; /* 填充剩余空间 */
-  min-width: 0; /* 允许缩小到内容宽度 */
-  max-width: none; /* 不限制最大宽度 */
-  border: none; /* 不显示边框 */
-}
-
+.filler-column,
 .filler-cell {
-  width: 100%; /* 填充剩余空间 */
-  min-width: 0; /* 允许缩小到内容宽度 */
-  max-width: none; /* 不限制最大宽度 */
-  border: none; /* 不显示边框 */
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  border: none;
+  border-right: none !important;
 }
-
-.grid-data-cell:last-child {
-  border-right: none; /* 最后一列不需要右边框 */
-}
-
 
 .column-header {
   display: flex;
@@ -722,39 +708,36 @@ tbody tr.selected-row th {
   width: 100%;
 }
 
-/* 为可调整大小的列添加调整手柄 */
+/* 列宽拖拽手柄 */
 .resizable-th {
   position: relative;
-  cursor: default; /* 默认情况下光标为默认样式 */
+  cursor: default;
 }
 
-/* 添加拖动区域 */
 .resizable-th::after {
   content: "";
   position: absolute;
   right: 0;
   top: 0;
   bottom: 0;
-  width: 10px; /* 拖动区域宽度，增加可点击区域 */
+  width: 10px;
   cursor: col-resize;
   background: transparent;
   z-index: 10;
-  margin-right: -5px; /* 扩大可点击区域 */
+  margin-right: -5px;
 }
 
-.resizable-th::after:hover {
-  background: #94a3b8; /* 悬停时显示灰色线条 */
+.resizable-th:hover::after {
+  background: var(--border-strong);
   opacity: 0.7;
 }
 
-/* 当正在调整大小时，显示更明显的视觉反馈 */
 .connections-table.resizing {
-  user-select: none; /* 防止在拖拽过程中选中文本 */
+  user-select: none;
 }
 
-/* 为调整手柄添加激活状态 */
 .connections-table.resizing .resizable-th.current-resizing::after {
-  background: #3b82f6; /* 调整大小时显示蓝色线条 */
+  background: var(--accent);
   opacity: 0.8;
 }
 
@@ -762,132 +745,111 @@ tbody tr.selected-row th {
   cursor: pointer;
   user-select: none;
   position: relative;
-  padding-right: 20px; /* 为排序指示器留出空间 */
+  padding-right: 18px;
 }
 
 .sort-indicator {
   position: absolute;
-  right: 5px;
+  right: 4px;
   font-size: 0.8em;
-  color: #6b7280;
+  color: var(--accent);
 }
 
-/* 确保表格容器有相对定位以便sticky定位正常工作 */
-.table-wrapper {
-  position: relative;
+/* 首列与窗口边界保留间距（表头与数据行对齐） */
+.connections-table th:first-child,
+.connections-table td:first-child {
+  padding-left: 14px;
 }
 
-/* 进程名称单元格样式 */
+/* 进程名称单元格 */
 .process-name-cell {
-  padding: 0 10px !important;
+  padding: 2px 8px;
 }
 
 .process-with-icon {
   display: flex;
   align-items: center;
-  gap: 3px; /* 图标与文本之间的间距 */
+  gap: 4px;
 }
 
 .process-icon {
   width: 16px;
   height: 16px;
   object-fit: contain;
-  flex-shrink: 0; /* 防止图标被压缩 */
+  flex-shrink: 0;
 }
 
-/* 内核进程样式 */
+/* 内核进程徽章 */
 .kernel-process {
-  font-weight: bold;
-  color: #7c2d12; /* 深红棕色，区别于普通进程 */
-  background-color: #fef2f2; /* 浅红背景 */
-  padding: 2px 4px;
-  border-radius: 3px;
+  font-weight: 600;
+  color: var(--danger);
+  background-color: var(--danger-weak);
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
 }
 
-/* 表格暗色主题样式 */
-.dark .connections-table thead tr {
-  background-color: #1a202c; /* 深灰蓝 */
-  color: #a0aec0; /* 中等亮度的灰蓝 */
-  border-bottom: 2px solid #2d3748; /* 深中灰蓝 */
+/* ===== 空状态 ===== */
+.table-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 80px 16px;
+  text-align: center;
 }
 
-.dark .connections-table th,
-.dark .connections-table td {
-  border-bottom: 1px solid #2d3748; /* 深中灰蓝 */
-  color: #a0aec0; /* 中等亮度的灰蓝 */
+.empty-icon {
+  color: var(--text-3);
+  opacity: 0.55;
+  margin-bottom: 8px;
 }
 
-.dark .connections-table th:not(:last-child),
-.dark .connections-table td:not(:last-child) {
-  border-right: 1px solid #2d3748; /* 深中灰蓝 */
+.empty-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-2);
 }
 
-.dark .connections-table tbody tr:nth-of-type(even) {
-  background-color: #2d3748; /* 深中灰蓝 */
+.empty-hint {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-3);
 }
 
-.dark .connections-table tbody tr:nth-of-type(odd) {
-  background-color: #1a202c; /* 深灰蓝 */
+/* ===== 骨架屏 ===== */
+.table-skeleton {
+  padding: 6px 0;
 }
 
-.dark .connections-table tbody tr:hover {
-  background-color: #4a5568; /* 中灰蓝 */
+.skeleton-row {
+  height: 24px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
 }
 
-.dark .connections-table tbody tr.selected-row {
-  background-color: #3c4bcb !important; /* 深蓝紫色 */
+.skeleton-bar {
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-subtle) 25%,
+    var(--bg-hover) 50%,
+    var(--bg-subtle) 75%
+  );
+  background-size: 200% 100%;
+  animation: pv-shimmer 1.4s ease-in-out infinite;
 }
 
-.dark .connections-table tbody tr.selected-row td,
-.dark .connections-table tbody tr.selected-row th {
-  color: #e2e8f0 !important; /* 浅灰蓝 */
+.skeleton-row:nth-child(2n) .skeleton-bar {
+  animation-delay: 0.2s;
 }
 
-/* 确保暗色模式下选中行样式具有足够高的特异性 */
-.dark tbody tr.selected-row {
-  background-color: #3c4bcb !important; /* 深蓝紫色 */
-}
-
-.dark tbody tr.selected-row td,
-.dark tbody tr.selected-row th {
-  color: #e2e8f0 !important; /* 浅灰蓝 */
-}
-
-/* 新增连接项在暗色主题下的样式 */
-.dark .connections-table tbody tr.new-connection {
-  background-color: #166534 !important; /* 深绿色 */
-}
-
-.dark .connections-table tbody tr.new-connection td,
-.dark .connections-table tbody tr.new-connection th {
-  color: #a7f3d0 !important; /* 浅绿色 */
-}
-
-/* 状态变化的连接项在暗色主题下的样式 */
-.dark .connections-table tbody tr.changed-connection {
-  background-color: #b7791f !important; /* 深金黄色 */
-}
-
-.dark .connections-table tbody tr.changed-connection td,
-.dark .connections-table tbody tr.changed-connection th {
-  color: #e2e8f0 !important; /* 浅灰蓝 */
-}
-
-/* 即将删除的连接项在暗色主题下的样式 */
-.dark .connections-table tbody tr.deleted-connection {
-  background-color: #991b1b !important; /* 深红色 */
-  opacity: 0.7; /* 稍微透明表示即将删除 */
-}
-
-.dark .connections-table tbody tr.deleted-connection td,
-.dark .connections-table tbody tr.deleted-connection th {
-  color: #fca5a5 !important; /* 浅红色 */
-  text-decoration: line-through; /* 删除线效果 */
-}
-
-/* 内核进程在暗色主题下的样式 */
-.dark .kernel-process {
-  color: #f8b4b4; /* 浅粉红 */
-  background-color: #8b2525; /* 深红棕 */
+.skeleton-row:nth-child(3n) .skeleton-bar {
+  animation-delay: 0.4s;
 }
 </style>

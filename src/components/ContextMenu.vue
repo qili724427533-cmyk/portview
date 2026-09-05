@@ -3,7 +3,9 @@
     <ul>
       <li @click="handleShowProcessDetails">
         <span class="menu-item-content">
-          <span class="menu-item-icon">&nbsp;</span>
+          <span class="menu-item-icon">
+            <Info :size="14" />
+          </span>
           {{ t("contextMenu.processDetails") }}
         </span>
       </li>
@@ -12,15 +14,17 @@
         v-if="props.selectedConnection && props.selectedConnection.pid"
       >
         <span class="menu-item-content">
-          <span class="menu-item-icon"
-            ><img src="/folder.svg" alt="folder" class="folder-icon"
-          /></span>
+          <span class="menu-item-icon">
+            <FolderOpen :size="14" />
+          </span>
           {{ t("contextMenu.openContainingFolder") }}
         </span>
       </li>
-      <li @click="handleKillProcess">
+      <li @click="handleKillProcess" class="danger-item">
         <span class="menu-item-content">
-          <span class="menu-item-icon">❌</span>
+          <span class="menu-item-icon">
+            <XCircle :size="14" />
+          </span>
           {{ t("contextMenu.killProcess") }}
         </span>
       </li>
@@ -31,6 +35,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
+import { Info, FolderOpen, XCircle } from "lucide-vue-next";
 import type { TcpConnection } from "@/types/connection";
 
 // 定义组件属性
@@ -86,87 +91,69 @@ const handleOpenContainingFolder = () => {
 </script>
 
 <style scoped>
-/* 右键菜单样式 */
+/* 右键菜单 */
 .context-menu {
-  position: fixed;
-  background: #ffffff;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  box-shadow:
-    0 10px 15px -3px rgba(0, 0, 0, 0.1),
-    0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
   z-index: 10000;
-  min-width: 150px;
+  min-width: 180px;
+  padding: 4px;
 }
 
 .context-menu ul {
   list-style: none;
   margin: 0;
-  padding: 4px 0;
+  padding: 0;
 }
 
 .context-menu li {
-  padding: 6px 16px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color 0.12s ease;
   font-size: 13px;
-  color: #1f2937;
+  color: var(--text-1);
   display: flex;
   align-items: center;
   line-height: 1.2;
 }
 
 .context-menu li:hover {
-  background-color: #e5e7eb;
+  background-color: var(--bg-hover);
 }
 
 .context-menu li:active {
-  background-color: #d1d5db;
+  background-color: var(--accent-weak);
 }
 
-.context-menu li:not(:last-child) {
-  border-bottom: 1px solid #e5e7eb;
+/* 危险操作（杀死进程） */
+.context-menu li.danger-item {
+  color: var(--danger);
+}
+
+.context-menu li.danger-item:hover {
+  background-color: var(--danger-weak);
 }
 
 .menu-item-content {
   display: flex;
   align-items: center;
-  gap: 8px; /* 图标和文本之间的间距 */
+  gap: 10px;
 }
 
 .menu-item-icon {
-  width: 16px; /* 固定宽度以确保对齐 */
+  width: 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  color: var(--text-2);
+  flex-shrink: 0;
 }
 
-.menu-item-icon .folder-icon {
-  width: 16px;
-  height: 16px;
-}
-
-/* 暗色主题下的右键菜单样式 */
-.dark .context-menu {
-  background: #1f2937;
-  border: 1px solid #374151;
-  color: #f3f4f6;
-}
-
-.dark .context-menu li {
-  color: #d1d5db;
-}
-
-.dark .context-menu li:hover {
-  background-color: #374151;
-}
-
-.dark .context-menu li:active {
-  background-color: #4b5563;
-}
-
-.dark .context-menu li:not(:last-child) {
-  border-bottom: 1px solid #4b5563;
+.context-menu li.danger-item .menu-item-icon {
+  color: var(--danger);
 }
 </style>

@@ -45,6 +45,10 @@
     "state": "State",
     "startTime": "Start Time"
   },
+  "table": {
+    "emptyTitle": "No active connections",
+    "emptyHint": "Connections will appear here — enable auto refresh for live monitoring"
+  },
   "contextMenu": {
     "processDetails": "Process Details",
     "openContainingFolder": "Open Containing Folder",
@@ -61,6 +65,7 @@
     "other": "Other State",
     "kernel": "Kernel Connections",
     "lastUpdate": "Last Update",
+    "sessionTotal": "Total ",
     "refreshInterval": "Auto Refresh"
   },
   "modal": {

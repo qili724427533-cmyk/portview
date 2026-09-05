@@ -45,6 +45,10 @@
     "state": "状态",
     "startTime": "启动时间"
   },
+  "table": {
+    "emptyTitle": "暂无网络连接",
+    "emptyHint": "连接信息将在此处显示，可开启自动刷新持续监控"
+  },
   "contextMenu": {
     "processDetails": "进程详情",
     "openContainingFolder": "打开程序所在目录",
@@ -61,6 +65,7 @@
     "other": "其他状态",
     "kernel": "内核连接",
     "lastUpdate": "上次更新",
+    "sessionTotal": "共",
     "refreshInterval": "自动刷新"
   },
   "modal": {

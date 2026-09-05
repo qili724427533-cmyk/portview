@@ -1,0 +1,170 @@
+/*
+ * PortView 设计令牌（Design Tokens）
+ * 所有组件的颜色 / 圆角 / 阴影 / 间距统一从这里取值，
+ * 暗色主题只需切换变量，不再复制整套选择器。
+ */
+
+:root {
+  /* 字体：桌面应用使用系统字体栈，避免网络字体依赖 */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto,
+    "PingFang SC", "Microsoft YaHei", "Noto Sans", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  /* 表面 */
+  --bg-app: #f4f6f8;
+  --bg-panel: #ffffff;
+  --bg-subtle: #f1f4f7;
+  --bg-hover: #e9eef3;
+  --bg-inset: #fbfcfd;
+
+  /* 文本 */
+  --text-1: #182230;
+  --text-2: #526071;
+  --text-3: #8a97a8;
+
+  /* 边框 */
+  --border: #e3e8ee;
+  --border-strong: #cdd5de;
+
+  /* 强调色与语义色（weak 为同色低透明度底） */
+  --accent: #2f6fed;
+  --accent-hover: #245dd1;
+  --accent-weak: rgba(47, 111, 237, 0.1);
+  --success: #189a4a;
+  --success-weak: rgba(24, 154, 74, 0.12);
+  --warning: #c47d10;
+  --warning-weak: rgba(196, 125, 16, 0.14);
+  --danger: #d92d20;
+  --danger-weak: rgba(217, 45, 32, 0.1);
+
+  /* 状态辅助色（状态栏数值等） */
+  --chart-blue: #2f6fed;
+  --chart-orange: #d97706;
+  --chart-green: #189a4a;
+  --chart-cyan: #0e9ba8;
+  --chart-yellow: #ca9700;
+  --chart-violet: #7c5cd6;
+  --chart-rose: #d4526e;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 2px 6px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.18);
+
+  /* 圆角 */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+
+  /* 控件高度 */
+  --control-height: 28px;
+}
+
+:root.dark {
+  --bg-app: #0f151d;
+  --bg-panel: #161d27;
+  --bg-subtle: #1c2530;
+  --bg-hover: #232e3c;
+  --bg-inset: #10161e;
+
+  --text-1: #e6ebf2;
+  --text-2: #9aa7b8;
+  --text-3: #64748b;
+
+  --border: #2a3542;
+  --border-strong: #384655;
+
+  --accent: #5b8cf5;
+  --accent-hover: #6f9bf7;
+  --accent-weak: rgba(91, 140, 245, 0.16);
+  --success: #34c07c;
+  --success-weak: rgba(52, 192, 124, 0.14);
+  --warning: #e2a336;
+  --warning-weak: rgba(226, 163, 54, 0.15);
+  --danger: #ef5a4e;
+  --danger-weak: rgba(239, 90, 78, 0.13);
+
+  --chart-blue: #6ea1f7;
+  --chart-orange: #f0a94f;
+  --chart-green: #4fce8f;
+  --chart-cyan: #4cc4cf;
+  --chart-yellow: #e3c05a;
+  --chart-violet: #a78bfa;
+  --chart-rose: #f2748c;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 2px 6px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+
+/* 基础 */
+:root {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--text-1);
+  background-color: var(--bg-app);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+}
+
+body,
+html {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden; /* 防止出现全局滚动条 */
+}
+
+/* 键盘焦点可见性 */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 6px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-3);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+/* 共享动画 */
+@keyframes pv-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pv-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}

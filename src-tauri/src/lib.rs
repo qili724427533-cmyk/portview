@@ -2,12 +2,14 @@
 use image;
 use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo, TcpState};
 use serde::{Deserialize, Serialize};
-use sysinfo::{Pid, System};
+use sysinfo::{Networks, Pid, System};
+use tauri::Manager;
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use std::time::SystemTime;
+use std::time::{Instant, SystemTime};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TcpConnection {
@@ -29,6 +31,16 @@ pub struct TcpConnection {
 pub struct ConnectionsSnapshot {
     pub connections: Vec<TcpConnection>,
     pub icons: HashMap<String, String>,
+    pub net_rate: NetRate,
+}
+
+// 系统网络吞吐：速率（字节/秒）与会话累计总量（应用启动以来）
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct NetRate {
+    pub down_bps: u64,
+    pub up_bps: u64,
+    pub total_down: u64,
+    pub total_up: u64,
 }
 
 // 定义进程详情结构
@@ -70,10 +82,134 @@ lazy_static::lazy_static! {
     static ref CACHE_DIR_PATH: Option<PathBuf> = initialize_cache_directory();
 }
 
+// 全局偏好：关闭窗口时是否直接退出（false = 隐藏到托盘常驻）
+static CLOSE_TO_QUIT: AtomicBool = AtomicBool::new(false);
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct AppSettings {
+    close_to_quit: bool,
+}
+
+// 偏好设置持久化到缓存目录下的 settings.json
+fn settings_path() -> Option<PathBuf> {
+    CACHE_DIR_PATH.as_ref().map(|dir| dir.join("settings.json"))
+}
+
+fn load_settings() -> AppSettings {
+    settings_path()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|content| serde_json::from_str(&content).ok())
+        .unwrap_or_default()
+}
+
+fn save_settings(settings: &AppSettings) {
+    if let Some(path) = settings_path() {
+        match serde_json::to_string_pretty(settings) {
+            Ok(content) => {
+                if let Err(e) = std::fs::write(path, content) {
+                    eprintln!("Failed to save settings: {}", e);
+                }
+            }
+            Err(e) => eprintln!("Failed to serialize settings: {}", e),
+        }
+    }
+}
+
 // 全局复用的 System 实例：sysinfo 的 CPU 占用依赖同一实例两次刷新的差值，
 // 且重建全量进程表代价高，不应每次轮询都重新创建
 lazy_static::lazy_static! {
     static ref SYSTEM: Mutex<System> = Mutex::new(System::new());
+}
+
+// 系统网络吞吐统计：sysinfo 的 NetworkData 是距上次刷新的增量，
+// 结合两次刷新的间隔换算为每秒速率
+struct NetRateState {
+    networks: Networks,
+    last_refresh: Option<Instant>,
+    ticks_since_list_refresh: u32,
+    down_bps: u64,
+    up_bps: u64,
+    total_down: u64,
+    total_up: u64,
+}
+
+// refresh() 只更新已存在网卡的计数，不会发现新增/移除的网卡，
+// 因此每隔 LIST_REFRESH_INTERVAL 次用 refresh_list() 重建网卡列表
+const NET_LIST_REFRESH_INTERVAL: u32 = 30;
+
+lazy_static::lazy_static! {
+    static ref NET_RATE: Mutex<NetRateState> = Mutex::new(NetRateState {
+        networks: Networks::new(),
+        last_refresh: None,
+        ticks_since_list_refresh: 0,
+        down_bps: 0,
+        up_bps: 0,
+        total_down: 0,
+        total_up: 0,
+    });
+}
+
+// 刷新系统网络吞吐并计算速率与会话累计（回环接口不计入）
+fn update_net_rate() -> NetRate {
+    let mut net = NET_RATE.lock().unwrap_or_else(|p| p.into_inner());
+
+    // 注意：必须先 refresh_list() 建立网卡列表，refresh() 才有数据可刷
+    if net.ticks_since_list_refresh == 0 {
+        net.networks.refresh_list();
+    } else {
+        net.networks.refresh();
+    }
+    net.ticks_since_list_refresh = (net.ticks_since_list_refresh + 1) % NET_LIST_REFRESH_INTERVAL;
+
+    let mut down_delta = 0u64;
+    let mut up_delta = 0u64;
+    for (name, data) in net.networks.iter() {
+        let lower = name.to_lowercase();
+        // 排除回环与常见虚拟网卡（虚拟交换机会镜像物理网卡流量，直接相加会重复计数）
+        if lower == "lo"
+            || lower.starts_with("lo0")
+            || lower.contains("loopback")
+            || lower.starts_with("vethernet")
+            || lower.contains("virtual")
+            || lower.contains("vmware")
+            || lower.starts_with("tap-")
+            || lower.starts_with("wan miniport")
+        {
+            continue;
+        }
+        down_delta += data.received();
+        up_delta += data.transmitted();
+    }
+
+    // 会话累计：直接累加每次刷新的增量，不依赖 sysinfo 的 total 语义
+    net.total_down += down_delta;
+    net.total_up += up_delta;
+
+    // 速率 = 增量 / 实际间隔；刷新过近时沿用上次速率避免抖动
+    let (down_bps, up_bps) = match net.last_refresh {
+        Some(last) => {
+            let secs = last.elapsed().as_secs_f64();
+            if secs < 0.05 {
+                (net.down_bps, net.up_bps)
+            } else {
+                (
+                    (down_delta as f64 / secs) as u64,
+                    (up_delta as f64 / secs) as u64,
+                )
+            }
+        }
+        None => (0, 0),
+    };
+
+    net.down_bps = down_bps;
+    net.up_bps = up_bps;
+    net.last_refresh = Some(Instant::now());
+    NetRate {
+        down_bps,
+        up_bps,
+        total_down: net.total_down,
+        total_up: net.total_up,
+    }
 }
 
 // 缓存进程图标信息，包含上次更新时间，以提高性能
@@ -760,7 +896,16 @@ async fn get_connections() -> Result<ConnectionsSnapshot, String> {
         }
     }
 
-    Ok(ConnectionsSnapshot { connections, icons })
+    // 刷新系统网络吞吐
+    let net_rate = update_net_rate();
+
+    Ok(ConnectionsSnapshot { connections, icons, net_rate })
+}
+
+// 获取系统网络吞吐速率（轻量命令：前端独立定时器轮询，不依赖自动刷新开关）
+#[tauri::command]
+async fn get_net_rate() -> Result<NetRate, String> {
+    Ok(update_net_rate())
 }
 
 // 获取进程详情
@@ -905,12 +1050,140 @@ async fn update_window_theme(_window: tauri::Window, _is_dark_mode: bool) -> Res
     Ok(())
 }
 
+// 唤起并聚焦主窗口
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
+// 切换开机自启（托盘菜单勾选项）
+fn toggle_autostart(app: &tauri::AppHandle) {
+    use tauri_plugin_autostart::ManagerExt;
+
+    let manager = app.autolaunch();
+    let enabled = manager.is_enabled().unwrap_or(false);
+    let _ = if enabled {
+        manager.disable()
+    } else {
+        manager.enable()
+    };
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // 单实例：重复启动时唤起已有主窗口（官方要求注册为第一个插件）
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main_window(app);
+        }))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if CLOSE_TO_QUIT.load(Ordering::Relaxed) {
+                    // 「关闭即退出」开启：不阻止关闭，窗口关闭后应用随之退出
+                } else {
+                    // 默认：隐藏到托盘常驻，退出走托盘菜单
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
+        .setup(|app| {
+            use tauri::menu::{CheckMenuItem, MenuBuilder, MenuItem, PredefinedMenuItem};
+            use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+
+            let handle = app.handle();
+
+            // 加载偏好设置（关闭行为等）
+            let settings = load_settings();
+            CLOSE_TO_QUIT.store(settings.close_to_quit, Ordering::Relaxed);
+
+            let show_item =
+                MenuItem::with_id(handle, "show", "显示 PortView", true, None::<&str>)?;
+            let close_quit_item = CheckMenuItem::with_id(
+                handle,
+                "close_quit",
+                "关闭窗口即退出",
+                true,
+                settings.close_to_quit,
+                None::<&str>,
+            )?;
+            // 初始勾选状态跟随系统当前的自启配置
+            let autostart_checked = {
+                use tauri_plugin_autostart::ManagerExt;
+                handle.autolaunch().is_enabled().unwrap_or(false)
+            };
+            let autostart_item = CheckMenuItem::with_id(
+                handle,
+                "autostart",
+                "开机自启",
+                true,
+                autostart_checked,
+                None::<&str>,
+            )?;
+            let quit_item = MenuItem::with_id(handle, "quit", "退出", true, None::<&str>)?;
+            let separator = PredefinedMenuItem::separator(handle)?;
+            let menu = MenuBuilder::new(handle)
+                .items(&[
+                    &show_item,
+                    &close_quit_item,
+                    &autostart_item,
+                    &separator,
+                    &quit_item,
+                ])
+                .build()?;
+
+            let icon = handle.default_window_icon().cloned().ok_or_else(|| {
+                tauri::Error::AssetNotFound("default window icon".to_string())
+            })?;
+
+            TrayIconBuilder::with_id("portview-tray")
+                .icon(icon)
+                .tooltip("PortView")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id().as_ref() {
+                    "show" => show_main_window(app),
+                    "close_quit" => {
+                        // 勾选状态由菜单自动切换，这里同步偏好并持久化
+                        let enabled = !CLOSE_TO_QUIT.load(Ordering::Relaxed);
+                        CLOSE_TO_QUIT.store(enabled, Ordering::Relaxed);
+                        save_settings(&AppSettings {
+                            close_to_quit: enabled,
+                        });
+                    }
+                    "autostart" => toggle_autostart(app),
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    // 左键单击或双击托盘图标：唤起主窗口；右键弹出菜单
+                    match event {
+                        TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        }
+                        | TrayIconEvent::DoubleClick { .. } => {
+                            show_main_window(tray.app_handle());
+                        }
+                        _ => {}
+                    }
+                })
+                .build(app)?;
+
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_connections,
+            get_net_rate,
             get_process_details,
             kill_process,
             open_folder,

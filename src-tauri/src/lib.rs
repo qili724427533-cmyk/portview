@@ -2,7 +2,7 @@
 use image;
 use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo, TcpState};
 use serde::{Deserialize, Serialize};
-use sysinfo::{Networks, Pid, System};
+use sysinfo::{Networks, Pid, ProcessRefreshKind, System, UpdateKind};
 use tauri::Manager;
 
 use std::collections::{HashMap, HashSet};
@@ -165,11 +165,17 @@ fn update_net_rate() -> NetRate {
     let mut up_delta = 0u64;
     for (name, data) in net.networks.iter() {
         let lower = name.to_lowercase();
-        // 排除回环与常见虚拟网卡（虚拟交换机会镜像物理网卡流量，直接相加会重复计数）
+        // 排除回环与常见虚拟网卡（虚拟交换机/容器网桥会镜像物理网卡流量，
+        // 直接相加会重复计数）。命名覆盖三平台：
+        // Windows: vEthernet (WSL/Hyper-V)；Linux: lo/veth*/docker0/br-*；
+        // macOS: lo0。VPN 隧道（utun/wg/tailscale）是真实流量，保留计数。
         if lower == "lo"
             || lower.starts_with("lo0")
             || lower.contains("loopback")
             || lower.starts_with("vethernet")
+            || lower.starts_with("veth")
+            || lower.starts_with("docker")
+            || lower.starts_with("br-")
             || lower.contains("virtual")
             || lower.contains("vmware")
             || lower.starts_with("tap-")
@@ -912,18 +918,42 @@ async fn get_net_rate() -> Result<NetRate, String> {
 #[tauri::command]
 async fn get_process_details(pid: u32) -> Result<ProcessDetails, String> {
     // 复用全局 System；只刷新目标进程——列表轮询每秒已做全量刷新，
-    // 这里无需重复全量开销。CPU 占用的窗口按该进程上次刷新计算，
-    // 两种刷新混用不影响数值正确性。
+    // 这里无需重复全量开销。
+    // 注意：sysinfo 的刷新按字段开关（refresh_processes/refresh_process
+    // 的默认 kind 都不含 cmd），命令行必须显式指定；cmd 用 OnlyIfNotSet，
+    // 进程存活期间不变，只需读取一次。CPU 占用窗口按该进程上次刷新计算，
+    // 与列表全量刷新混用不影响数值正确性。
+    let refresh_kind = ProcessRefreshKind::new()
+        .with_memory()
+        .with_cpu()
+        .with_cmd(UpdateKind::OnlyIfNotSet)
+        .with_exe(UpdateKind::OnlyIfNotSet);
+
     let mut system = SYSTEM.lock().unwrap_or_else(|p| p.into_inner());
-    if !system.refresh_process(Pid::from_u32(pid)) {
+    if !system.refresh_process_specifics(Pid::from_u32(pid), refresh_kind) {
         return Err(format!("Process with PID {} not found", pid));
     }
 
     if let Some(process) = system.process(Pid::from_u32(pid)) {
+        // sysinfo 的 cmd() 是按 argv 解析的（CommandLineToArgvW），原始引号已被剥离；
+        // 重组时给含空格的参数补回引号，避免参数内部的空格与参数分隔符混淆
+        let command_line = process
+            .cmd()
+            .iter()
+            .map(|arg| {
+                if arg.contains(' ') || arg.contains('\t') {
+                    format!("\"{}\"", arg.replace('"', "\\\""))
+                } else {
+                    arg.clone()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+
         Ok(ProcessDetails {
             pid,
             name: process.name().to_string(),
-            command_line: process.cmd().join(" "),
+            command_line,
             executable_path: process
                 .exe()
                 .map(|path| path.to_string_lossy().to_string())

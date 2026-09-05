@@ -279,25 +279,6 @@ const connections = computed<TcpConnection[]>(() => {
     [...deletedConnections.value.values()].map((entry) => entry.conn),
   ).filter((conn) => !currentIds.has(conn.id));
   const list = [...filtered, ...deletedRows];
-  // 临时诊断：若出现违反当前协议筛选的行，打印行来源（正常情况无输出）
-  if (filterProtocol.value !== "all") {
-    const violators = list.filter(
-      (conn) => conn.protocol !== filterProtocol.value,
-    );
-    if (violators.length > 0) {
-      console.warn(
-        "[PortView][filter-diag] 出现违反筛选的行:",
-        JSON.stringify(
-          violators.map((c) => ({
-            protocol: c.protocol,
-            pid: c.pid,
-            isDeleted: !!c.isDeleted,
-            inOverlay: deletedConnections.value.has(c.id),
-          })),
-        ),
-      );
-    }
-  }
   return sortColumn.value ? [...list].sort(compareConns) : list;
 });
 

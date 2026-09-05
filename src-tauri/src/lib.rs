@@ -4,7 +4,7 @@ use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSock
 use serde::{Deserialize, Serialize};
 use sysinfo::{Pid, System};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::SystemTime;
@@ -19,9 +19,16 @@ pub struct TcpConnection {
     pub state: String,
     pub pid: Option<u32>,
     pub process_name: Option<String>,
-    pub icon: Option<String>,    // Base64 encoded icon data
-    pub start_time: Option<u64>, // Process start time in seconds since Unix epoch
-    pub fill_column: String,     // Fill column for filling remaining space
+    pub exe_path: Option<String>, // 可执行文件路径，前端据此从快照的 icons 映射中取图标
+    pub start_time: Option<u64>,  // Process start time in seconds since Unix epoch
+}
+
+// get_connections 的返回结构：图标按唯一的 exe_path 去重后单独传输，
+// 避免同一份 base64 图标随每条连接行重复序列化
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConnectionsSnapshot {
+    pub connections: Vec<TcpConnection>,
+    pub icons: HashMap<String, String>,
 }
 
 // 定义进程详情结构
@@ -61,6 +68,12 @@ fn tcp_state_to_string(state: TcpState) -> &'static str {
 // 全局缓存目录路径
 lazy_static::lazy_static! {
     static ref CACHE_DIR_PATH: Option<PathBuf> = initialize_cache_directory();
+}
+
+// 全局复用的 System 实例：sysinfo 的 CPU 占用依赖同一实例两次刷新的差值，
+// 且重建全量进程表代价高，不应每次轮询都重新创建
+lazy_static::lazy_static! {
+    static ref SYSTEM: Mutex<System> = Mutex::new(System::new());
 }
 
 // 缓存进程图标信息，包含上次更新时间，以提高性能
@@ -122,7 +135,7 @@ fn preload_cache_files(cache_dir: &PathBuf) {
                                 );
 
                                 // 将缓存数据添加到全局缓存中
-                                let mut cache = ICON_CACHE.lock().unwrap();
+                                let mut cache = ICON_CACHE.lock().unwrap_or_else(|p| p.into_inner());
                                 // 对于预加载的文件，我们假设它们都是有效的图标
                                 cache.insert(
                                     file_name_str.to_string(), // 使用文件名（不含扩展名）作为键
@@ -149,7 +162,7 @@ fn get_process_icon_by_path(exe_path: &str) -> Option<String> {
 
     // 一次获取锁，检查缓存
     {
-        let cache = ICON_CACHE.lock().unwrap();
+        let cache = ICON_CACHE.lock().unwrap_or_else(|p| p.into_inner());
         if let Some((cached_icon, _, has_cached)) = cache.get(&cache_key) {
             // 如果之前已经缓存了"无图标"的结果，则直接返回None
             if !has_cached {
@@ -178,7 +191,7 @@ fn get_process_icon_by_path(exe_path: &str) -> Option<String> {
             );
 
             // 将图标添加到内存缓存
-            let mut cache = ICON_CACHE.lock().unwrap();
+            let mut cache = ICON_CACHE.lock().unwrap_or_else(|p| p.into_inner());
             cache.insert(
                 cache_key,
                 (Some(base64_icon.clone()), SystemTime::now(), true),
@@ -188,8 +201,17 @@ fn get_process_icon_by_path(exe_path: &str) -> Option<String> {
         }
     }
 
-    // 缓存文件不存在，提取图标
-    let png_data = extract_icon_from_exe(exe_path)?;
+    // 缓存文件不存在，提取图标；失败时统一在此写负缓存。
+    // 不能依赖平台实现来记录失败结果：它们存在提前返回的路径（如
+    // Windows 图标转换失败、macOS 的 `?` 传播），会绕过各自的负缓存写入
+    let png_data = match extract_icon_from_exe(exe_path) {
+        Some(data) => data,
+        None => {
+            let mut cache = ICON_CACHE.lock().unwrap_or_else(|p| p.into_inner());
+            cache.insert(cache_key, (None, SystemTime::now(), false));
+            return None;
+        }
+    };
 
     // 保存转换后的PNG到缓存目录
     let base64_icon = base64::Engine::encode(
@@ -201,7 +223,7 @@ fn get_process_icon_by_path(exe_path: &str) -> Option<String> {
     let cache_result = std::fs::write(&png_cache_path, &png_data);
 
     // 将图标添加到内存缓存
-    let mut cache = ICON_CACHE.lock().unwrap();
+    let mut cache = ICON_CACHE.lock().unwrap_or_else(|p| p.into_inner());
     cache.insert(
         cache_key,
         (Some(base64_icon.clone()), SystemTime::now(), true),
@@ -274,18 +296,8 @@ fn extract_icon_from_exe_windows(exe_path: &str) -> Option<Vec<u8>> {
             DestroyIcon(h_icon);
 
             return icon_data;
-        } else {
-            // 销毁无效图标句柄
-            if h_icon as usize > 1 {
-                DestroyIcon(h_icon);
-            }
         }
     }
-
-    // 缓存找不到图标的结果
-    let cache_key = format!("{:x}", md5::compute(exe_path.as_bytes()));
-    let mut cache = ICON_CACHE.lock().unwrap();
-    cache.insert(cache_key, (None, SystemTime::now(), false));
 
     None
 }
@@ -512,11 +524,6 @@ fn extract_icon_from_exe_macos(exe_path: &str) -> Option<Vec<u8>> {
         }
     }
 
-    // 缓存找不到图标的结果
-    let cache_key = format!("{:x}", md5::compute(exe_path.as_bytes()));
-    let mut cache = ICON_CACHE.lock().unwrap();
-    cache.insert(cache_key, (None, SystemTime::now(), false));
-
     None
 }
 
@@ -639,21 +646,59 @@ fn extract_icon_from_exe_linux(exe_path: &str) -> Option<Vec<u8>> {
         }
     }
 
-    // 缓存找不到图标的结果
-    let cache_key = format!("{:x}", md5::compute(exe_path.as_bytes()));
-    let mut cache = ICON_CACHE.lock().unwrap();
-    cache.insert(cache_key, (None, SystemTime::now(), false));
-
     None
 }
 
 // ==================== 网络连接相关函数 ====================
 
+// 根据 PID 从进程表中组装单条连接记录（TCP/UDP 共用）
+fn build_connection(
+    protocol: &str,
+    local_addr: String,
+    local_port: u16,
+    remote_addr: String,
+    remote_port: u16,
+    state: &str,
+    pid: Option<u32>,
+    process_map: &HashMap<Pid, &sysinfo::Process>,
+) -> TcpConnection {
+    let process_info = pid.and_then(|p| process_map.get(&Pid::from_u32(p)));
+
+    let process_name = match process_info {
+        Some(process) => Some(process.name().to_string()),
+        // 如果无法获取进程信息，可能是内核进程或权限不足，显示特殊标识
+        None if pid.is_some() => Some("[KERNEL]".to_string()),
+        None => None,
+    };
+
+    let exe_path = process_info
+        .and_then(|process| process.exe())
+        .map(|path| path.to_string_lossy().to_string());
+
+    let start_time = match process_info {
+        Some(process) => Some(process.start_time()),
+        // 内核进程的时间信息可能不可用，返回0
+        None if pid.is_some() => Some(0),
+        None => None,
+    };
+
+    TcpConnection {
+        protocol: protocol.to_string(),
+        local_addr,
+        local_port,
+        remote_addr,
+        remote_port,
+        state: state.to_string(),
+        pid,
+        process_name,
+        exe_path,
+        start_time,
+    }
+}
+
 // 获取系统网络连接列表
 #[tauri::command]
-async fn get_connections() -> Result<Vec<TcpConnection>, String> {
-    let mut connections = Vec::new();
-
+async fn get_connections() -> Result<ConnectionsSnapshot, String> {
     // 设置地址族标志 (IPv4 和 IPv6)
     let af_flags = AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6;
     // 设置协议标志 (TCP 和 UDP)
@@ -662,167 +707,68 @@ async fn get_connections() -> Result<Vec<TcpConnection>, String> {
     // 获取网络连接信息
     let sockets_info = get_sockets_info(af_flags, proto_flags).map_err(|e| e.to_string())?;
 
-    // 创建系统信息实例以获取进程名称
-    let system = System::new_all();
+    // 在全局 System 上做增量刷新，而不是每次调用都重建全量进程表；
+    // 同一实例的两次刷新间隔也让进程的 CPU 占用有了计算基准
+    let mut system = SYSTEM.lock().unwrap_or_else(|p| p.into_inner());
+    system.refresh_processes();
 
-    // 预先构建进程信息映射表，避免重复查询
-    let mut process_map: std::collections::HashMap<Pid, &sysinfo::Process> = std::collections::HashMap::new();
-    for process in system.processes().values() {
-        process_map.insert(process.pid(), process);
-    }
+    // 预先构建进程信息映射表，避免逐个 socket 重复查询
+    let process_map: HashMap<Pid, &sysinfo::Process> = system
+        .processes()
+        .iter()
+        .map(|(pid, process)| (*pid, process))
+        .collect();
 
+    let mut connections = Vec::with_capacity(sockets_info.len());
     for si in sockets_info {
+        let pid = si.associated_pids.first().copied();
         match si.protocol_socket_info {
-            ProtocolSocketInfo::Tcp(tcp_si) => {
-                let protocol = "TCP".to_string();
+            ProtocolSocketInfo::Tcp(tcp_si) => connections.push(build_connection(
+                "TCP",
+                tcp_si.local_addr.to_string(),
+                tcp_si.local_port,
+                tcp_si.remote_addr.to_string(),
+                tcp_si.remote_port,
+                tcp_state_to_string(tcp_si.state),
+                pid,
+                &process_map,
+            )),
+            ProtocolSocketInfo::Udp(udp_si) => connections.push(build_connection(
+                "UDP",
+                udp_si.local_addr.to_string(),
+                udp_si.local_port,
+                "*".to_string(),
+                0,
+                "UNCONN",
+                pid,
+                &process_map,
+            )),
+        }
+    }
+    // 图标提取可能较慢（GDI/文件IO），先释放全局锁再进行
+    drop(system);
 
-                // 处理本地地址和端口
-                let local_addr = tcp_si.local_addr.to_string();
-                let local_port = tcp_si.local_port;
-
-                // 处理远程地址和端口
-                let remote_addr = tcp_si.remote_addr.to_string();
-                let remote_port = tcp_si.remote_port;
-
-                // 获取连接状态
-                let state = tcp_state_to_string(tcp_si.state);
-
-                // 获取 PID (如果有)
-                let pid = if !si.associated_pids.is_empty() {
-                    Some(si.associated_pids[0]) // 取第一个关联的PID
-                } else {
-                    None
-                };
-
-                // 根据 PID 获取进程信息（从预构建的映射表中获取）
-                let process_info = pid.and_then(|pid_val| process_map.get(&(pid_val as usize).into()));
-
-                // 根据 PID 获取进程名称
-                let process_name = if let Some(process) = process_info {
-                    Some(process.name().to_string())
-                } else if pid.is_some() {
-                    // 如果无法获取进程信息，可能是内核进程或权限不足，显示特殊标识
-                    Some("[KERNEL]".to_string())
-                } else {
-                    None
-                };
-
-                // 获取进程图标 - 使用统一的缓存机制
-                let icon = if let Some(process) = process_info {
-                    if let Some(exe_path) = process.exe() {
-                        let exe_path_str = exe_path.to_string_lossy();
-                        get_process_icon_by_path(&exe_path_str)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-
-                // 获取进程启动时间
-                let start_time = if let Some(process) = process_info {
-                    Some(process.start_time())
-                } else if pid.is_some() {
-                    // 内核进程的时间信息可能不可用，返回0
-                    Some(0)
-                } else {
-                    None
-                };
-
-                connections.push(TcpConnection {
-                    protocol,
-                    local_addr,
-                    local_port,
-                    remote_addr,
-                    remote_port,
-                    state: state.to_string(),
-                    pid,
-                    process_name,
-                    icon,
-                    start_time,
-                    fill_column: String::new(),
-                });
-            }
-            ProtocolSocketInfo::Udp(udp_si) => {
-                let protocol = "UDP".to_string();
-
-                // 处理本地地址和端口
-                let local_addr = udp_si.local_addr.to_string();
-                let local_port = udp_si.local_port;
-
-                // UDP 没有远程地址和端口的概念，通常设置为通配符
-                let remote_addr = "*".to_string();
-                let remote_port = 0;
-
-                // UDP 没有连接状态，设置为 UNCONN
-                let state = "UNCONN".to_string();
-
-                // 获取 PID (如果有)
-                let pid = if !si.associated_pids.is_empty() {
-                    Some(si.associated_pids[0]) // 取第一个关联的PID
-                } else {
-                    None
-                };
-
-                // 根据 PID 获取进程信息（从预构建的映射表中获取）
-                let process_info = pid.and_then(|pid_val| process_map.get(&(pid_val as usize).into()));
-
-                // 根据 PID 获取进程名称
-                let process_name = if let Some(process) = process_info {
-                    Some(process.name().to_string())
-                } else if pid.is_some() {
-                    // 如果无法获取进程信息，可能是内核进程或权限不足，显示特殊标识
-                    Some("[KERNEL]".to_string())
-                } else {
-                    None
-                };
-
-                // 获取进程图标 - 使用统一的缓存机制
-                let icon = if let Some(process) = process_info {
-                    if let Some(exe_path) = process.exe() {
-                        let exe_path_str = exe_path.to_string_lossy();
-                        get_process_icon_by_path(&exe_path_str)
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-
-                // 获取进程启动时间
-                let start_time = if let Some(process) = process_info {
-                    Some(process.start_time())
-                } else if pid.is_some() {
-                    // 内核进程的时间信息可能不可用，返回0
-                    Some(0)
-                } else {
-                    None
-                };
-
-                connections.push(TcpConnection {
-                    protocol,
-                    local_addr,
-                    local_port,
-                    remote_addr,
-                    remote_port,
-                    state: state.to_string(),
-                    pid,
-                    process_name,
-                    icon,
-                    start_time,
-                    fill_column: String::new(),
-                });
-            }
+    // 每个唯一的可执行文件路径只提取并传输一次图标
+    let mut icons: HashMap<String, String> = HashMap::new();
+    let exe_paths: HashSet<&str> = connections
+        .iter()
+        .filter_map(|conn| conn.exe_path.as_deref())
+        .collect();
+    for exe_path in exe_paths {
+        if let Some(icon) = get_process_icon_by_path(exe_path) {
+            icons.insert(exe_path.to_string(), icon);
         }
     }
 
-    Ok(connections)
+    Ok(ConnectionsSnapshot { connections, icons })
 }
 
 // 获取进程详情
 #[tauri::command]
 async fn get_process_details(pid: u32) -> Result<ProcessDetails, String> {
-    let mut system = System::new_all();
+    // 复用全局 System：CPU 占用按"距上次刷新的间隔"计算，
+    // 全新实例会因缺少对比基准而恒为 0
+    let mut system = SYSTEM.lock().unwrap_or_else(|p| p.into_inner());
     system.refresh_processes();
 
     if let Some(process) = system.process(Pid::from_u32(pid)) {

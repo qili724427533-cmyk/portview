@@ -1,5 +1,6 @@
 // 网络连接类型定义
 export interface TcpConnection {
+  id: string; // 稳定唯一标识（协议+五元组），用于行 key、选中比较与差分
   protocol: string;
   local_addr: string;
   local_port: number;
@@ -8,12 +9,18 @@ export interface TcpConnection {
   state: string;
   pid: number | null;
   process_name: string | null;
-  icon: string | null; // Base64 encoded icon data
+  exe_path: string | null; // 可执行文件路径，用于从快照的 icons 映射中取图标
+  icon: string | null; // Base64 encoded icon data（由前端从快照合并而来）
   start_time: number | null; // Process start time in seconds since Unix epoch
-  fill_column: string; // Fill column for filling remaining space
   isNew?: boolean; // 标记是否为新连接
   hasChanged?: boolean; // 标记连接状态是否有变化
   isDeleted?: boolean; // 标记是否为即将删除的连接
+}
+
+// get_connections 返回快照：图标按 exe_path 去重，避免每行重复传输
+export interface ConnectionsSnapshot {
+  connections: TcpConnection[];
+  icons: Record<string, string>;
 }
 
 // 进程详情类型定义

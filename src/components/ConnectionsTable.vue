@@ -149,13 +149,13 @@
         </thead>
         <tbody>
           <tr
-            v-for="(conn, index) in connections"
-            :key="index"
+            v-for="conn in connections"
+            :key="conn.id"
             @contextmenu="showContextMenuHandler(conn, $event)"
             @click="emit('update:clickedConnection', conn)"
             @dblclick="showProcessDetailsDialog(conn)"
             :class="{
-              'selected-row': clickedConnection === conn,
+              'selected-row': clickedConnection?.id === conn.id,
               'changed-connection': conn.hasChanged,
               'new-connection': conn.isNew,
               'deleted-connection': conn.isDeleted,

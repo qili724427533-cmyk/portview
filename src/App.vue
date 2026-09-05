@@ -56,6 +56,73 @@ const clickedConnection = ref<TcpConnection | null>(null);
 // 进程详情弹窗相关状态
 const showProcessDetails = ref(false);
 const processDetails = ref<ProcessDetails | null>(null);
+const selectedPid = ref<number | null>(null); // 当前详情弹窗展示的进程
+const processGone = ref(false); // 轮询时发现进程已退出
+const processRefreshing = ref(false); // 手动刷新进行中
+let processDetailsTimer: number | null = null;
+
+// 获取进程详情；silent 用于轮询场景——进程退出时不弹错误框
+async function loadProcessDetails(pid: number, silent = false) {
+  try {
+    const details: ProcessDetails = await invoke("get_process_details", {
+      pid,
+    });
+    processDetails.value = details;
+    processGone.value = false;
+  } catch (error) {
+    if (silent) {
+      // 进程可能已退出：停止轮询，弹窗内提示
+      processGone.value = true;
+      stopProcessDetailsRefresh();
+      return;
+    }
+    console.error(t("alerts.getProcessDetailsFailed", { error }), error);
+    showMessageDialogFn(t("alerts.getProcessDetailsFailed", { error }), 'error');
+  }
+}
+
+// 弹窗打开期间每秒刷新当前进程信息
+function startProcessDetailsRefresh(pid: number) {
+  stopProcessDetailsRefresh();
+  processDetailsTimer = window.setInterval(() => {
+    loadProcessDetails(pid, true);
+  }, 1000);
+}
+
+function stopProcessDetailsRefresh() {
+  if (processDetailsTimer !== null) {
+    clearInterval(processDetailsTimer);
+    processDetailsTimer = null;
+  }
+}
+
+// 关闭弹窗时停止刷新
+function setProcessDetailsVisible(visible: boolean) {
+  showProcessDetails.value = visible;
+  if (!visible) {
+    stopProcessDetailsRefresh();
+  }
+}
+
+// 手动刷新当前进程信息
+async function refreshProcessDetails() {
+  if (selectedPid.value === null || processRefreshing.value) return;
+  processRefreshing.value = true;
+  await loadProcessDetails(selectedPid.value, true);
+  processRefreshing.value = false;
+}
+
+// 显示进程详情弹窗
+async function showProcessDetailsDialog(conn: TcpConnection) {
+  if (conn.pid) {
+    selectedConnection.value = conn; // 保存选中的连接以获取图标信息
+    selectedPid.value = conn.pid;
+    processGone.value = false;
+    await loadProcessDetails(conn.pid);
+    showProcessDetails.value = true;
+    startProcessDetailsRefresh(conn.pid);
+  }
+}
 
 // 关于对话框相关状态
 const showAbout = ref(false);
@@ -349,28 +416,6 @@ function updateStatusBarInfo(connections: TcpConnection[]) {
   ).length;
 
   statusBarInfo.value.lastUpdate = new Date().toLocaleTimeString();
-}
-
-// 获取进程详情
-async function loadProcessDetails(pid: number) {
-  try {
-    const details: ProcessDetails = await invoke("get_process_details", {
-      pid,
-    });
-    processDetails.value = details;
-  } catch (error) {
-    console.error(t("alerts.getProcessDetailsFailed", { error }), error);
-    showMessageDialogFn(t("alerts.getProcessDetailsFailed", { error }), 'error');
-  }
-}
-
-// 显示进程详情弹窗
-async function showProcessDetailsDialog(conn: TcpConnection) {
-  if (conn.pid) {
-    selectedConnection.value = conn; // 保存选中的连接以获取图标信息
-    await loadProcessDetails(conn.pid);
-    showProcessDetails.value = true;
-  }
 }
 
 // 杀死进程
@@ -675,6 +720,9 @@ onUnmounted(() => {
     clearInterval(netRateTimer);
   }
 
+  // 停止进程详情刷新
+  stopProcessDetailsRefresh();
+
   // 移除文档点击事件监听器
   document.removeEventListener("click", hideContextMenu);
   
@@ -816,7 +864,10 @@ function checkSystemThemePreference() {
       :showProcessDetails="showProcessDetails"
       :processDetails="processDetails"
       :processIcon="selectedConnection?.icon || null"
-      @update:showProcessDetails="showProcessDetails = $event"
+      :processGone="processGone"
+      :refreshing="processRefreshing"
+      @update:showProcessDetails="setProcessDetailsVisible"
+      @refresh="refreshProcessDetails"
     />
 
     <!-- 关于对话框 -->

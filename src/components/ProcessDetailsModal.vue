@@ -5,81 +5,154 @@
     @click="emit('update:showProcessDetails', false)"
   >
     <div class="modal-content" @click.stop>
+      <!-- 头部：进程身份 -->
       <div class="modal-header">
-        <div class="header-with-icon">
-          <img
-            :src="
-              processIcon ? 'data:image/png;base64,' + processIcon : '/exe.svg'
-            "
-            :alt="processDetails?.name || 'Process Icon'"
-            class="process-icon-large"
-          />
-          <h3>{{ t("modal.processDetails") }}</h3>
-        </div>
-        <button
-          class="icon-close"
-          @click="emit('update:showProcessDetails', false)"
-          :title="t('modal.processDetails')"
-        >
-          <X :size="16" />
-        </button>
-      </div>
-      <div v-if="processDetails" class="process-details">
-        <p>
-          <strong>{{ t("modal.pid") }}</strong>
-          <span>{{ processDetails.pid }}</span>
-        </p>
-        <p>
-          <strong>{{ t("modal.name") }}</strong>
-          <span>{{ processDetails.name }}</span>
-        </p>
-        <p>
-          <strong>{{ t("modal.commandLine") }}</strong>
-          <span>{{ processDetails.command_line }}</span>
-        </p>
-        <p>
-          <strong>{{ t("modal.executablePath") }}</strong>
-          <span class="path-container">
-            <span>{{ processDetails.executable_path }}</span>
-            <button
-              v-if="
-                props.processDetails &&
-                props.processDetails.executable_path &&
-                props.processDetails.executable_path !== ''
-              "
-              class="open-folder-btn"
-              @click="openContainingFolder"
-              :title="t('modal.openFolder')"
-            >
-              <FolderOpen :size="15" />
-            </button>
+        <img
+          :src="
+            processIcon ? 'data:image/png;base64,' + processIcon : '/exe.svg'
+          "
+          :alt="processDetails?.name || 'Process Icon'"
+          class="process-icon-large"
+        />
+        <div class="header-info">
+          <h3 class="process-name">
+            {{ processDetails?.name || t("modal.processDetails") }}
+          </h3>
+          <span v-if="processDetails" class="pid-chip">
+            PID {{ processDetails.pid }}
           </span>
-        </p>
-        <p>
-          <strong>{{ t("modal.memoryUsage") }}</strong>
-          <span>{{ formatMemoryUsage(processDetails.memory_usage) }}</span>
-        </p>
-        <p>
-          <strong>{{ t("modal.cpuUsage") }}</strong>
-          <span>{{ processDetails.cpu_usage }}%</span>
-        </p>
-        <p>
-          <strong>{{ t("modal.parentPid") }}</strong>
-          <span>{{ processDetails.parent_pid }}</span>
-        </p>
-        <p>
-          <strong>{{ t("modal.startTime") }}</strong>
-          <span>{{ formatDate(processDetails.start_time) }}</span>
-        </p>
+        </div>
+        <div class="header-actions">
+          <button
+            class="icon-btn"
+            :class="{ spinning: refreshing }"
+            @click="emit('refresh')"
+            :title="t('modal.refresh')"
+          >
+            <RefreshCw :size="15" />
+          </button>
+          <button
+            class="icon-btn"
+            @click="emit('update:showProcessDetails', false)"
+          >
+            <X :size="16" />
+          </button>
+        </div>
+      </div>
+
+      <div v-if="processDetails" class="process-details">
+        <!-- 进程已退出提示 -->
+        <div v-if="processGone" class="gone-banner">
+          <AlertTriangle :size="14" />
+          <span>{{ t("modal.processGone") }}</span>
+        </div>
+
+        <!-- 概览指标卡片 -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <span class="stat-icon"><MemoryStick :size="15" /></span>
+            <div class="stat-info">
+              <span class="stat-label">{{ t("modal.memoryUsage") }}</span>
+              <span class="stat-value">{{
+                formatMemoryUsage(processDetails.memory_usage)
+              }}</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <span class="stat-icon"><Cpu :size="15" /></span>
+            <div class="stat-info">
+              <span class="stat-label">{{ t("modal.cpuUsage") }}</span>
+              <span class="stat-value">{{ processDetails.cpu_usage.toFixed(1) }}%</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <span class="stat-icon"><Clock :size="15" /></span>
+            <div class="stat-info">
+              <span class="stat-label">{{ t("modal.startTime") }}</span>
+              <span class="stat-value">{{ formatDate(processDetails.start_time) }}</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <span class="stat-icon"><GitFork :size="15" /></span>
+            <div class="stat-info">
+              <span class="stat-label">{{ t("modal.parentPid") }}</span>
+              <span class="stat-value">{{ processDetails.parent_pid ?? "-" }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 命令行 -->
+        <div class="detail-section">
+          <div class="detail-label-row">
+            <span class="detail-label">{{ t("modal.commandLine") }}</span>
+            <button
+              v-if="processDetails.command_line"
+              class="mini-btn"
+              :class="{ copied: copiedKey === 'cmd' }"
+              @click="copyText(processDetails.command_line, 'cmd')"
+              :title="copiedKey === 'cmd' ? t('modal.copied') : t('modal.copy')"
+            >
+              <Check v-if="copiedKey === 'cmd'" :size="13" />
+              <Copy v-else :size="13" />
+            </button>
+          </div>
+          <div class="code-block">{{ processDetails.command_line || "-" }}</div>
+        </div>
+
+        <!-- 执行路径 -->
+        <div class="detail-section">
+          <div class="detail-label-row">
+            <span class="detail-label">{{ t("modal.executablePath") }}</span>
+            <span class="label-actions">
+              <button
+                v-if="processDetails.executable_path"
+                class="mini-btn"
+                :class="{ copied: copiedKey === 'path' }"
+                @click="copyText(processDetails.executable_path, 'path')"
+                :title="
+                  copiedKey === 'path' ? t('modal.copied') : t('modal.copy')
+                "
+              >
+                <Check v-if="copiedKey === 'path'" :size="13" />
+                <Copy v-else :size="13" />
+              </button>
+              <button
+                v-if="
+                  props.processDetails &&
+                  props.processDetails.executable_path &&
+                  props.processDetails.executable_path !== ''
+                "
+                class="mini-btn"
+                @click="openContainingFolder"
+                :title="t('modal.openFolder')"
+              >
+                <FolderOpen :size="13" />
+              </button>
+            </span>
+          </div>
+          <div class="code-block">{{ processDetails.executable_path || "-" }}</div>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
-import { X, FolderOpen } from "lucide-vue-next";
+import {
+  AlertTriangle,
+  Check,
+  Clock,
+  Copy,
+  Cpu,
+  FolderOpen,
+  GitFork,
+  MemoryStick,
+  RefreshCw,
+  X,
+} from "lucide-vue-next";
 import type { ProcessDetails } from "@/types/connection";
 
 // 定义组件属性
@@ -87,6 +160,8 @@ interface Props {
   showProcessDetails: boolean;
   processDetails: ProcessDetails | null;
   processIcon: string | null; // Base64 encoded icon data
+  processGone?: boolean; // 进程是否已退出（轮询时发现）
+  refreshing?: boolean; // 手动刷新进行中
 }
 
 const props = defineProps<Props>();
@@ -94,12 +169,38 @@ const props = defineProps<Props>();
 // 定义事件发射器
 interface Emits {
   (e: "update:showProcessDetails", value: boolean): void;
+  (e: "refresh"): void;
 }
 
 const emit = defineEmits<Emits>();
 
 // 使用国际化
 const { t } = useI18n();
+
+// 复制反馈：记录刚复制完成的字段 key，短暂显示对勾
+const copiedKey = ref<string | null>(null);
+let copiedTimer: number | null = null;
+
+const copyText = async (text: string, key: string) => {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    // 剪贴板 API 不可用时退化为 execCommand
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    document.body.removeChild(textarea);
+  }
+  copiedKey.value = key;
+  if (copiedTimer !== null) {
+    window.clearTimeout(copiedTimer);
+  }
+  copiedTimer = window.setTimeout(() => {
+    copiedKey.value = null;
+  }, 1500);
+};
 
 // 打开文件所在目录
 const openContainingFolder = async () => {
@@ -182,34 +283,56 @@ const formatDate = (timestamp: number | null): string => {
 
 .modal-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 12px;
   padding: 14px 20px;
   border-bottom: 1px solid var(--border);
 }
 
-.header-with-icon {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
 .process-icon-large {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   object-fit: contain;
   flex-shrink: 0;
 }
 
-.modal-header h3 {
+.header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.process-name {
   margin: 0;
   font-size: 15px;
   font-weight: 600;
   color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* 统一的幽灵关闭按钮 */
-.icon-close {
+.pid-chip {
+  width: fit-content;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-2);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+/* 头部操作按钮（刷新 / 关闭） */
+.header-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.icon-btn {
   width: 28px;
   height: 28px;
   display: inline-flex;
@@ -223,9 +346,28 @@ const formatDate = (timestamp: number | null): string => {
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.icon-close:hover {
+.icon-btn:hover {
   background-color: var(--bg-hover);
   color: var(--text-1);
+}
+
+.icon-btn.spinning {
+  color: var(--accent);
+  animation: pv-spin 0.8s linear infinite;
+}
+
+/* 进程已退出提示条 */
+.gone-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 14px;
+  border-radius: var(--radius-sm);
+  background: var(--warning-weak);
+  border: 1px solid var(--warning);
+  color: var(--warning);
+  font-size: 12.5px;
 }
 
 .process-details {
@@ -234,56 +376,126 @@ const formatDate = (timestamp: number | null): string => {
   flex-grow: 1;
 }
 
-.process-details p {
-  margin: 8px 0;
-  font-size: 13.5px;
-  color: var(--text-2);
-  line-height: 1.45;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+/* ===== 概览指标卡片 ===== */
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 16px;
 }
 
-.process-details strong {
-  color: var(--text-3);
-  font-size: 12px;
-  font-weight: 500;
-  word-break: break-all;
-  overflow-wrap: break-word;
-}
-
-.process-details span {
-  color: var(--text-1);
-  word-break: break-all;
-  overflow-wrap: break-word;
-  white-space: pre-wrap;
-}
-
-.path-container {
+.stat-card {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  min-width: 0;
 }
 
-.open-folder-btn {
+.stat-icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--accent-weak);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.stat-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.stat-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== 命令行 / 路径区块 ===== */
+.detail-section {
+  margin-bottom: 14px;
+}
+
+.detail-section:last-child {
+  margin-bottom: 0;
+}
+
+.detail-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.detail-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-3);
+}
+
+.label-actions {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.mini-btn {
+  width: 24px;
+  height: 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--bg-panel);
   color: var(--text-2);
   cursor: pointer;
-  flex-shrink: 0;
   transition: border-color 0.15s ease, color 0.15s ease,
     background-color 0.15s ease;
 }
 
-.open-folder-btn:hover {
+.mini-btn:hover {
   border-color: var(--accent);
   color: var(--accent);
   background-color: var(--accent-weak);
+}
+
+.mini-btn.copied {
+  border-color: var(--success);
+  color: var(--success);
+  background-color: var(--success-weak);
+}
+
+.code-block {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-1);
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  max-height: 96px;
+  overflow-y: auto;
 }
 </style>

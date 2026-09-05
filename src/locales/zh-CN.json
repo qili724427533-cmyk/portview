@@ -78,7 +78,11 @@
     "cpuUsage": "CPU使用率",
     "parentPid": "父进程PID",
     "startTime": "启动时间",
-    "openFolder": "打开所在文件夹"
+    "openFolder": "打开所在文件夹",
+    "copy": "复制",
+    "copied": "已复制",
+    "refresh": "刷新",
+    "processGone": "该进程已退出，以下为最后获取的信息"
   },
   "alerts": {
     "processKilled": "成功杀死进程: {name} (PID: {pid})",

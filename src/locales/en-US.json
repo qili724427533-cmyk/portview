@@ -78,7 +78,11 @@
     "cpuUsage": "CPU Usage",
     "parentPid": "Parent PID",
     "startTime": "Start Time",
-    "openFolder": "Open Containing Folder"
+    "openFolder": "Open Containing Folder",
+    "copy": "Copy",
+    "copied": "Copied",
+    "refresh": "Refresh",
+    "processGone": "This process has exited — showing the last known info"
   },
   "alerts": {
     "processKilled": "Successfully killed process: {name} (PID: {pid})",

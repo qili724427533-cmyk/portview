@@ -66,23 +66,26 @@ const processGone = ref(false); // 轮询时发现进程已退出
 const processRefreshing = ref(false); // 手动刷新进行中
 let processDetailsTimer: number | null = null;
 
-// 获取进程详情；silent 用于轮询场景——进程退出时不弹错误框
-async function loadProcessDetails(pid: number, silent = false) {
+// 获取进程详情；silent 用于轮询场景——进程退出时不弹错误框。
+// 返回是否成功
+async function loadProcessDetails(pid: number, silent = false): Promise<boolean> {
   try {
     const details: ProcessDetails = await invoke("get_process_details", {
       pid,
     });
     processDetails.value = details;
     processGone.value = false;
+    return true;
   } catch (error) {
     if (silent) {
       // 进程可能已退出：停止轮询，弹窗内提示
       processGone.value = true;
       stopProcessDetailsRefresh();
-      return;
+      return false;
     }
     console.error(t("alerts.getProcessDetailsFailed", { error }), error);
     showMessageDialogFn(t("alerts.getProcessDetailsFailed", { error }), 'error');
+    return false;
   }
 }
 
@@ -101,11 +104,12 @@ function stopProcessDetailsRefresh() {
   }
 }
 
-// 关闭弹窗时停止刷新
+// 关闭弹窗时停止刷新并清除数据，避免下次打开闪现上一个进程的旧信息
 function setProcessDetailsVisible(visible: boolean) {
   showProcessDetails.value = visible;
   if (!visible) {
     stopProcessDetailsRefresh();
+    processDetails.value = null;
   }
 }
 
@@ -117,16 +121,21 @@ async function refreshProcessDetails() {
   processRefreshing.value = false;
 }
 
-// 显示进程详情弹窗
+// 显示进程详情弹窗：先清除上一个进程的数据，打开后再拉取；
+// 拉取失败时关闭空弹窗（错误信息已单独提示）
 async function showProcessDetailsDialog(conn: TcpConnection) {
-  if (conn.pid) {
-    selectedConnection.value = conn; // 保存选中的连接以获取图标信息
-    selectedPid.value = conn.pid;
-    processGone.value = false;
-    await loadProcessDetails(conn.pid);
-    showProcessDetails.value = true;
-    startProcessDetailsRefresh(conn.pid);
+  if (!conn.pid) return;
+  selectedConnection.value = conn; // 保存选中的连接以获取图标信息
+  selectedPid.value = conn.pid;
+  processGone.value = false;
+  processDetails.value = null;
+  showProcessDetails.value = true;
+  const ok = await loadProcessDetails(conn.pid);
+  if (!ok) {
+    showProcessDetails.value = false;
+    return;
   }
+  startProcessDetailsRefresh(conn.pid);
 }
 
 // 关于对话框相关状态
@@ -313,21 +322,27 @@ async function loadConnections() {
     previousSearchProcessName.value = searchProcessName.value;
     previousSearchLocalPort.value = searchLocalPort.value;
 
-    // 生成稳定 id，并从快照中合并该进程的图标（后端已按 exe_path 去重）
+    // 生成稳定 id：相同五元组+PID 的连接真实存在（如 Chrome 的多个 mDNS
+    // 套接字，SO_REUSEADDR），追加出现序号保证 id 唯一——重复 id 会让
+    // Vue 的列表 diff 失效，表现为筛选后旧行残留、行序错乱
     const list = result.connections;
-    // 维护平局行的随机次序：清理已消失连接的序号，为新连接分配
-    const seenIds = new Set(list.map((conn) => conn.id));
-    for (const id of sortSeeds.keys()) {
-      if (!seenIds.has(id)) {
-        sortSeeds.delete(id);
-      }
-    }
+    const idCount = new Map<string, number>();
     for (const conn of list) {
-      conn.id = makeConnId(conn);
+      const base = makeConnId(conn);
+      const n = (idCount.get(base) ?? 0) + 1;
+      idCount.set(base, n);
+      conn.id = n === 1 ? base : `${base}#${n}`;
       if (!sortSeeds.has(conn.id)) {
         sortSeeds.set(conn.id, Math.random());
       }
       conn.icon = (conn.exe_path && result.icons[conn.exe_path]) || null;
+    }
+    // 清理已消失连接的随机序号（id 已生成，直接用）
+    const seenIds = new Set(list.map((conn) => conn.id));
+    for (const id of [...sortSeeds.keys()]) {
+      if (!seenIds.has(id)) {
+        sortSeeds.delete(id);
+      }
     }
 
     // 当前筛选视图（与展示列表同一套筛选逻辑），供差分比较

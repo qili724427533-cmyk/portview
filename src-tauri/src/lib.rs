@@ -874,15 +874,46 @@ async fn get_net_rate() -> Result<NetRate, String> {
     Ok(update_net_rate())
 }
 
+// 从 sysinfo 进程条目组装详情（含命令行重组）
+fn build_process_details(pid: u32, process: &sysinfo::Process) -> ProcessDetails {
+    // sysinfo 的 cmd() 是按 argv 解析的（CommandLineToArgvW），原始引号已被剥离；
+    // 重组时给含空格的参数补回引号，避免参数内部的空格与参数分隔符混淆
+    let command_line = process
+        .cmd()
+        .iter()
+        .map(|arg| {
+            if arg.contains(' ') || arg.contains('\t') {
+                format!("\"{}\"", arg.replace('"', "\\\""))
+            } else {
+                arg.clone()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    ProcessDetails {
+        pid,
+        name: process.name().to_string(),
+        command_line,
+        executable_path: process
+            .exe()
+            .map(|path| path.to_string_lossy().to_string())
+            .unwrap_or_default(),
+        memory_usage: process.memory(),
+        cpu_usage: process.cpu_usage(),
+        parent_pid: process.parent().map(|p| p.as_u32()),
+        start_time: process.start_time(),
+    }
+}
+
 // 获取进程详情
 #[tauri::command]
 async fn get_process_details(pid: u32) -> Result<ProcessDetails, String> {
-    // 复用全局 System；只刷新目标进程——列表轮询每秒已做全量刷新，
-    // 这里无需重复全量开销。
-    // 注意：sysinfo 的刷新按字段开关（refresh_processes/refresh_process
-    // 的默认 kind 都不含 cmd），命令行必须显式指定；cmd 用 OnlyIfNotSet，
-    // 进程存活期间不变，只需读取一次。CPU 占用窗口按该进程上次刷新计算，
-    // 与列表全量刷新混用不影响数值正确性。
+    // 复用全局 System；只刷新目标进程——列表轮询每秒已做全量刷新。
+    // 注意两点：①sysinfo 的刷新按字段开关，命令行必须显式指定
+    // （cmd 用 OnlyIfNotSet，进程存活期间只需读取一次）；②单进程刷新
+    // 失败不代表进程不存在——权限受限的进程（如 Windows 的 System/pid 4）
+    // 刷不动，但列表轮询的缓存里仍有它的数据，此时回退使用缓存。
     let refresh_kind = ProcessRefreshKind::new()
         .with_memory()
         .with_cpu()
@@ -890,41 +921,16 @@ async fn get_process_details(pid: u32) -> Result<ProcessDetails, String> {
         .with_exe(UpdateKind::OnlyIfNotSet);
 
     let mut system = SYSTEM.lock().unwrap_or_else(|p| p.into_inner());
-    if !system.refresh_process_specifics(Pid::from_u32(pid), refresh_kind) {
+    let pid_typed = Pid::from_u32(pid);
+    if !system.refresh_process_specifics(pid_typed, refresh_kind)
+        && system.process(pid_typed).is_none()
+    {
         return Err(format!("Process with PID {} not found", pid));
     }
 
-    if let Some(process) = system.process(Pid::from_u32(pid)) {
-        // sysinfo 的 cmd() 是按 argv 解析的（CommandLineToArgvW），原始引号已被剥离；
-        // 重组时给含空格的参数补回引号，避免参数内部的空格与参数分隔符混淆
-        let command_line = process
-            .cmd()
-            .iter()
-            .map(|arg| {
-                if arg.contains(' ') || arg.contains('\t') {
-                    format!("\"{}\"", arg.replace('"', "\\\""))
-                } else {
-                    arg.clone()
-                }
-            })
-            .collect::<Vec<_>>()
-            .join(" ");
-
-        Ok(ProcessDetails {
-            pid,
-            name: process.name().to_string(),
-            command_line,
-            executable_path: process
-                .exe()
-                .map(|path| path.to_string_lossy().to_string())
-                .unwrap_or_default(),
-            memory_usage: process.memory(),
-            cpu_usage: process.cpu_usage(),
-            parent_pid: process.parent().map(|p| p.as_u32()),
-            start_time: process.start_time(),
-        })
-    } else {
-        Err(format!("Process with PID {} not found", pid))
+    match system.process(pid_typed) {
+        Some(process) => Ok(build_process_details(pid, process)),
+        None => Err(format!("Process with PID {} not found", pid)),
     }
 }
 

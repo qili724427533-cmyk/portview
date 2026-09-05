@@ -911,10 +911,13 @@ async fn get_net_rate() -> Result<NetRate, String> {
 // 获取进程详情
 #[tauri::command]
 async fn get_process_details(pid: u32) -> Result<ProcessDetails, String> {
-    // 复用全局 System：CPU 占用按"距上次刷新的间隔"计算，
-    // 全新实例会因缺少对比基准而恒为 0
+    // 复用全局 System；只刷新目标进程——列表轮询每秒已做全量刷新，
+    // 这里无需重复全量开销。CPU 占用的窗口按该进程上次刷新计算，
+    // 两种刷新混用不影响数值正确性。
     let mut system = SYSTEM.lock().unwrap_or_else(|p| p.into_inner());
-    system.refresh_processes();
+    if !system.refresh_process(Pid::from_u32(pid)) {
+        return Err(format!("Process with PID {} not found", pid));
+    }
 
     if let Some(process) = system.process(Pid::from_u32(pid)) {
         Ok(ProcessDetails {

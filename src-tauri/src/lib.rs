@@ -243,51 +243,11 @@ fn initialize_cache_directory() -> Option<PathBuf> {
     match std::fs::create_dir_all(&cache_dir) {
         Ok(_) => {
             eprintln!("Successfully created cache directory: {:?}", cache_dir);
-
-            // 预加载缓存文件到内存中
-            preload_cache_files(&cache_dir);
-
             Some(cache_dir)
         }
         Err(e) => {
             eprintln!("Failed to create cache directory {:?}: {}", cache_dir, e);
             None
-        }
-    }
-}
-
-// 预加载缓存文件到内存中
-fn preload_cache_files(cache_dir: &PathBuf) {
-    // 读取缓存目录中的所有PNG文件
-    if let Ok(entries) = std::fs::read_dir(cache_dir) {
-        for entry in entries {
-            if let Ok(entry) = entry {
-                let path = entry.path();
-
-                // 检查是否为PNG文件
-                if path.extension().map_or(false, |ext| ext == "png") {
-                    if let Some(file_name) = path.file_stem() {
-                        if let Some(file_name_str) = file_name.to_str() {
-                            // 尝试读取文件内容
-                            if let Ok(file_content) = std::fs::read(&path) {
-                                // 将文件内容编码为base64并存储到缓存中
-                                let base64_icon = base64::Engine::encode(
-                                    &base64::engine::general_purpose::STANDARD,
-                                    &file_content,
-                                );
-
-                                // 将缓存数据添加到全局缓存中
-                                let mut cache = ICON_CACHE.lock().unwrap_or_else(|p| p.into_inner());
-                                // 对于预加载的文件，我们假设它们都是有效的图标
-                                cache.insert(
-                                    file_name_str.to_string(), // 使用文件名（不含扩展名）作为键
-                                    (Some(base64_icon), SystemTime::now(), true),
-                                );
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 }

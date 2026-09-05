@@ -158,7 +158,6 @@ interface Emits {
   (e: "update:filterState", value: string): void;
   (e: "update:searchProcessName", value: string): void;
   (e: "update:searchLocalPort", value: string): void;
-  (e: "applyFiltersAndSearch"): void;
   (e: "toggleAutoRefresh"): void;
   (e: "changeRefreshInterval", interval: number): void;
   (e: "update:selectedRefreshInterval", value: number): void;
@@ -194,15 +193,11 @@ const handleStateChange = (event: Event) => {
 const handleSearchProcessInput = (event: Event) => {
   const target = event.target as HTMLInputElement;
   emit('update:searchProcessName', target.value);
-  // 触发搜索
-  emit('applyFiltersAndSearch');
 };
 
 const handleSearchLocalPortInput = (event: Event) => {
   const target = event.target as HTMLInputElement;
   emit('update:searchLocalPort', target.value);
-  // 触发搜索
-  emit('applyFiltersAndSearch');
 };
 
 const handleRefreshIntervalChange = (event: Event) => {

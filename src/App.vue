@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useI18n } from "vue-i18n";
 import ConnectionsTable from "./components/ConnectionsTable.vue";
 import MenuBar from "./components/MenuBar.vue";
@@ -9,12 +10,16 @@ import ContextMenu from "./components/ContextMenu.vue";
 import ProcessDetailsModal from "./components/ProcessDetailsModal.vue";
 import AboutDialog from "./components/AboutDialog.vue";
 import MessageBox from "./components/MessageBox.vue";
-import type { TcpConnection, ProcessDetails, SortColumn, SortDirection, SortValue, ConnectionsSnapshot, NetRate } from "@/types/connection";
+import type { TcpConnection, ProcessDetails, SortColumn, SortDirection, ConnectionsSnapshot, NetRate } from "@/types/connection";
 
 // 初始化国际化
 const { t, locale } = useI18n();
 
-const connections = ref<TcpConnection[]>([]);
+const rawConnections = ref<TcpConnection[]>([]); // 后端原始快照（未筛选）
+const lastView = ref<TcpConnection[]>([]); // 上一轮筛选后的视图，供差分比较
+// 平局行的随机次序（按连接身份持久）：快照本身是 TCP 块+UDP 块，
+// 稳定排序会保留这种分组；随机序号让平局行协议无关且跨刷新稳定
+const sortSeeds = new Map<string, number>();
 const isLoading = ref(false);
 // 自动刷新相关状态
 const autoRefreshInterval = ref<number | null>(null);
@@ -188,6 +193,105 @@ async function refreshNetRate() {
   }
 }
 
+// 头部筛选条件应用到列表（与展示列表同一套逻辑）
+function filterConnections(list: TcpConnection[]): TcpConnection[] {
+  let out = list;
+  if (filterProtocol.value !== "all") {
+    out = out.filter((conn) => conn.protocol === filterProtocol.value);
+  }
+  if (filterState.value !== "all") {
+    out = out.filter((conn) => conn.state === filterState.value);
+  }
+  const nameTerm = searchProcessName.value.toLowerCase().trim();
+  if (nameTerm !== "") {
+    out = out.filter(
+      (conn) =>
+        conn.process_name &&
+        conn.process_name.toLowerCase().includes(nameTerm),
+    );
+  }
+  const portTerm = searchLocalPort.value.trim();
+  if (portTerm !== "") {
+    out = out.filter((conn) =>
+      conn.local_port.toString().startsWith(portTerm),
+    );
+  }
+  return out;
+}
+
+// 排序比较器：只按点击的列决定次序，其他列不参与；
+// 平局行由稳定排序保持快照中的自然顺序
+function compareConns(a: TcpConnection, b: TcpConnection): number {
+  let result = 0;
+  switch (sortColumn.value) {
+    case "pid":
+      result = (a.pid || 0) - (b.pid || 0);
+      break;
+    case "local_port":
+      result = a.local_port - b.local_port;
+      break;
+    case "remote_port":
+      result = a.remote_port - b.remote_port;
+      break;
+    case "start_time":
+      result = (a.start_time || 0) - (b.start_time || 0);
+      break;
+    case "process_name":
+      result = (a.process_name || "").localeCompare(b.process_name || "");
+      break;
+    case "protocol":
+      result = a.protocol.localeCompare(b.protocol);
+      break;
+    case "local_addr":
+      result = a.local_addr.localeCompare(b.local_addr);
+      break;
+    case "remote_addr":
+      result = a.remote_addr.localeCompare(b.remote_addr);
+      break;
+    case "state":
+      result = a.state.localeCompare(b.state);
+      break;
+  }
+  if (result === 0) {
+    // 平局按持久的随机序号排列：打破快照自带的 TCP/UDP 分组，
+    // 且不引入其他列、跨刷新稳定
+    result = (sortSeeds.get(a.id) ?? 0) - (sortSeeds.get(b.id) ?? 0);
+  }
+  return sortDirection.value === "asc" ? result : -result;
+}
+
+// 展示列表 = 筛选后的原始数据 + 展示期内的已删除连接，再应用排序。
+// 筛选/排序全部由头部状态派生，点击即时生效，无需重新拉取数据。
+const connections = computed<TcpConnection[]>(() => {
+  const filtered = filterConnections(rawConnections.value);
+  const currentIds = new Set(filtered.map((conn) => conn.id));
+  // 已删除连接同样应用当前筛选，避免切换筛选后残留其它协议/状态的行
+  const deletedRows = filterConnections(
+    [...deletedConnections.value.values()].map((entry) => entry.conn),
+  ).filter((conn) => !currentIds.has(conn.id));
+  const list = [...filtered, ...deletedRows];
+  // 临时诊断：若出现违反当前协议筛选的行，打印行来源（正常情况无输出）
+  if (filterProtocol.value !== "all") {
+    const violators = list.filter(
+      (conn) => conn.protocol !== filterProtocol.value,
+    );
+    if (violators.length > 0) {
+      console.warn(
+        "[PortView][filter-diag] 出现违反筛选的行:",
+        JSON.stringify(
+          violators.map((c) => ({
+            protocol: c.protocol,
+            pid: c.pid,
+            isDeleted: !!c.isDeleted,
+            inOverlay: deletedConnections.value.has(c.id),
+          })),
+        ),
+      );
+    }
+  }
+  return sortColumn.value ? [...list].sort(compareConns) : list;
+});
+
 // 获取网络连接列表
 async function loadConnections() {
   // 上一轮请求未完成时跳过本次触发，避免请求堆积
@@ -209,58 +313,30 @@ async function loadConnections() {
     previousSearchProcessName.value = searchProcessName.value;
     previousSearchLocalPort.value = searchLocalPort.value;
 
-    // 应用筛选条件
-    let filteredResult = result.connections;
-
-    // 协议筛选
-    if (filterProtocol.value !== "all") {
-      filteredResult = filteredResult.filter(
-        (conn) => conn.protocol === filterProtocol.value,
-      );
-    }
-
-    // 状态筛选
-    if (filterState.value !== "all") {
-      filteredResult = filteredResult.filter(
-        (conn) => conn.state === filterState.value,
-      );
-    }
-
-    // 进程名搜索
-    if (searchProcessName.value.trim() !== "") {
-      const searchTerm = searchProcessName.value.toLowerCase().trim();
-      filteredResult = filteredResult.filter(
-        (conn) =>
-          conn.process_name &&
-          conn.process_name.toLowerCase().includes(searchTerm),
-      );
-    }
-
-    // 本地端口搜索
-    if (searchLocalPort.value.trim() !== "") {
-      const searchTerm = searchLocalPort.value.trim();
-      filteredResult = filteredResult.filter((conn) => {
-        // 使用左匹配，无论输入的是数字还是其他内容
-        return conn.local_port.toString().startsWith(searchTerm);
-      });
-    }
-
     // 生成稳定 id，并从快照中合并该进程的图标（后端已按 exe_path 去重）
-    for (const conn of filteredResult) {
+    const list = result.connections;
+    // 维护平局行的随机次序：清理已消失连接的序号，为新连接分配
+    const seenIds = new Set(list.map((conn) => conn.id));
+    for (const id of sortSeeds.keys()) {
+      if (!seenIds.has(id)) {
+        sortSeeds.delete(id);
+      }
+    }
+    for (const conn of list) {
       conn.id = makeConnId(conn);
+      if (!sortSeeds.has(conn.id)) {
+        sortSeeds.set(conn.id, Math.random());
+      }
       conn.icon = (conn.exe_path && result.icons[conn.exe_path]) || null;
     }
 
-    // 生成当前连接的 id 集合
+    // 当前筛选视图（与展示列表同一套筛选逻辑），供差分比较
+    const filteredResult = filterConnections(list);
     const currentIds = new Set(filteredResult.map((conn) => conn.id));
 
-    // 如果筛选条件发生了变化，则不使用上一次的列表做比较
-    let previousFilteredConnections: TcpConnection[] = [];
-    if (!filterChanged && !isFirstLoad.value) {
-      previousFilteredConnections = connections.value
-        .filter((conn) => !conn.isDeleted) // 只考虑非删除状态的连接
-        .map((conn) => ({ ...conn, hasChanged: undefined }));
-    }
+    // 如果筛选条件发生了变化，则不使用上一次的视图做比较
+    const previousFilteredConnections: TcpConnection[] =
+      !filterChanged && !isFirstLoad.value ? lastView.value : [];
     const previousById = new Map(
       previousFilteredConnections.map((conn) => [conn.id, conn]),
     );
@@ -347,14 +423,10 @@ async function loadConnections() {
     isFirstLoad.value = false;
     consecutiveLoadFailures = 0;
 
-    // 展示列表 = 当前连接 + 展示期内的已删除连接
-    const deletedRows = [...deletedConnections.value.values()].map(
-      (entry) => entry.conn,
-    );
-    connections.value = [...filteredResult, ...deletedRows];
-
-    // 应用排序
-    applySorting();
+    // 记录本轮筛选视图供下一轮差分；原始快照更新后，
+    // 展示列表（筛选+排序）由 computed 自动派生
+    lastView.value = filteredResult;
+    rawConnections.value = list;
   } catch (error) {
     consecutiveLoadFailures += 1;
     console.error(t("alerts.getConnectionsFailed", { error }), error);
@@ -367,16 +439,40 @@ async function loadConnections() {
   }
 }
 
-// 设置协议筛选
-function setProtocolFilter(protocol: "all" | "TCP" | "UDP") {
-  filterProtocol.value = protocol;
-  applyFiltersAndSearch();
+// 筛选变更时向后台拉取一次最新数据（本地由 computed 即时生效，
+// 后台拉取负责数据实时反馈；防重入保证与自动刷新轮询不堆积）
+function refetchForFilterChange() {
+  loadConnections();
 }
 
-// 应用筛选和搜索
-function applyFiltersAndSearch() {
-  // 重新获取数据以应用筛选条件
-  loadConnections();
+// 文本搜索输入防抖拉取（300ms），避免每个按键都触发一次全量枚举
+let searchDebounceTimer: number | null = null;
+function scheduleSearchRefetch() {
+  if (searchDebounceTimer !== null) {
+    window.clearTimeout(searchDebounceTimer);
+  }
+  searchDebounceTimer = window.setTimeout(refetchForFilterChange, 300);
+}
+
+function onFilterStateChange(state: string) {
+  filterState.value = state;
+  refetchForFilterChange();
+}
+
+function onSearchProcessNameInput(value: string) {
+  searchProcessName.value = value;
+  scheduleSearchRefetch();
+}
+
+function onSearchLocalPortInput(value: string) {
+  searchLocalPort.value = value;
+  scheduleSearchRefetch();
+}
+
+// 设置协议筛选（列表由 computed 派生，改动即时生效）
+function setProtocolFilter(protocol: "all" | "TCP" | "UDP") {
+  filterProtocol.value = protocol;
+  refetchForFilterChange();
 }
 
 // 更新状态栏信息
@@ -507,96 +603,18 @@ function hideContextMenu() {
   showContextMenu.value = false;
 }
 
-// 排序函数
-function applySorting() {
-  if (!sortColumn.value) return;
-
-  connections.value.sort((a, b) => {
-    let valueA: SortValue, valueB: SortValue;
-
-    switch (sortColumn.value) {
-      case "process_name":
-        valueA = a.process_name || "";
-        valueB = b.process_name || "";
-        return sortDirection.value === "asc"
-          ? valueA.localeCompare(valueB)
-          : valueB.localeCompare(valueA);
-      case "pid":
-        valueA = a.pid || 0;
-        valueB = b.pid || 0;
-        return sortDirection.value === "asc"
-          ? valueA - valueB
-          : valueB - valueA;
-      case "protocol":
-        valueA = a.protocol || "";
-        valueB = b.protocol || "";
-        return sortDirection.value === "asc"
-          ? valueA.localeCompare(valueB)
-          : valueB.localeCompare(valueA);
-      case "local_addr":
-        valueA = a.local_addr || "";
-        valueB = b.local_addr || "";
-        return sortDirection.value === "asc"
-          ? valueA.localeCompare(valueB)
-          : valueB.localeCompare(valueA);
-      case "local_port":
-        valueA = a.local_port || 0;
-        valueB = b.local_port || 0;
-        return sortDirection.value === "asc"
-          ? valueA - valueB
-          : valueB - valueA;
-      case "remote_addr":
-        valueA = a.remote_addr || "";
-        valueB = b.remote_addr || "";
-        return sortDirection.value === "asc"
-          ? valueA.localeCompare(valueB)
-          : valueB.localeCompare(valueA);
-      case "remote_port":
-        valueA = a.remote_port || 0;
-        valueB = b.remote_port || 0;
-        return sortDirection.value === "asc"
-          ? valueA - valueB
-          : valueB - valueA;
-      case "state":
-        valueA = a.state || "";
-        valueB = b.state || "";
-        return sortDirection.value === "asc"
-          ? valueA.localeCompare(valueB)
-          : valueB.localeCompare(valueA);
-      case "start_time":
-        valueA = a.start_time || 0;
-        valueB = b.start_time || 0;
-        return sortDirection.value === "asc"
-          ? valueA - valueB
-          : valueB - valueA;
-      default:
-        return 0;
-    }
-  });
-}
-
-// 移除暂存区中超过展示时长的已删除连接，并刷新视图（供定时器兜底调用）
+// 移除暂存区中超过展示时长的已删除连接（展示列表由 computed 派生）
 function purgeExpiredDeletedConnections() {
   const now = Date.now();
-  let expired = false;
   for (const [id, entry] of deletedConnections.value) {
     if (now - entry.deletedAt > DELETED_CONNECTION_TTL) {
       deletedConnections.value.delete(id);
-      expired = true;
     }
-  }
-  if (expired) {
-    connections.value = connections.value.filter(
-      (conn) => !(conn.isDeleted && !deletedConnections.value.has(conn.id)),
-    );
   }
 }
 
-// 切换列排序
-async function toggleSort(column: SortColumn) {
-  // 在排序前重新获取最新连接数据，确保排序基于最新数据
-  await loadConnections();
-
+// 切换列排序（排序由 computed 派生，无需重新拉取数据）
+function toggleSort(column: SortColumn) {
   if (sortColumn.value === column) {
     // 如果当前列已经是排序列，则切换排序方向
     sortDirection.value = sortDirection.value === "asc" ? "desc" : "asc";
@@ -605,9 +623,6 @@ async function toggleSort(column: SortColumn) {
     sortColumn.value = column;
     sortDirection.value = "asc";
   }
-
-  // 重新应用排序（虽然loadConnections内部已经调用applySorting，但再次确保排序正确）
-  applySorting();
 }
 
 // 启用自动刷新
@@ -671,6 +686,13 @@ onMounted(async () => {
 
   // 检查并应用主题偏好
   checkSystemThemePreference();
+
+  // 主题已应用后再显示窗口，避免启动白屏（tauri.conf 中窗口初始为隐藏）
+  try {
+    await getCurrentWindow().show();
+  } catch {
+    // 浏览器环境没有 Tauri 窗口，忽略
+  }
 
   loadConnections();
 
@@ -814,13 +836,9 @@ function checkSystemThemePreference() {
       :refreshIntervals="refreshIntervals"
       :isDarkMode="isDarkMode"
       @update:filterProtocol="filterProtocol = $event"
-      @update:filterState="
-        filterState = $event;
-        applyFiltersAndSearch();
-      "
-      @update:searchProcessName="searchProcessName = $event"
-      @update:searchLocalPort="searchLocalPort = $event"
-      @applyFiltersAndSearch="applyFiltersAndSearch"
+      @update:filterState="onFilterStateChange"
+      @update:searchProcessName="onSearchProcessNameInput($event)"
+      @update:searchLocalPort="onSearchLocalPortInput($event)"
       @toggleAutoRefresh="toggleAutoRefresh"
       @changeRefreshInterval="changeRefreshInterval"
       @update:selectedRefreshInterval="selectedRefreshInterval = $event"

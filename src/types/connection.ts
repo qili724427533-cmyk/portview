@@ -25,6 +25,12 @@ export interface NetRate {
   total_up: number; // 会话累计上传（字节，应用启动以来）
 }
 
+// 应用偏好设置（托盘可切换的开关项）
+export interface AppSettings {
+  close_to_quit: boolean;
+  show_net: boolean; // 状态栏是否显示网络流量
+}
+
 export interface ConnectionsSnapshot {
   connections: TcpConnection[];
   icons: Record<string, string>;

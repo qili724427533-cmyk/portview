@@ -53,20 +53,27 @@
         statusBarInfo.kernelConnections
       }}</span>
     </div>
-    <div class="status-item status-item--push">
-      <span class="status-label net-down">↓</span>
-      <span class="status-value net-down">{{ formatSpeed(statusBarInfo.netDown) }}</span>
-      <span class="status-total">{{
-        t("statusBar.sessionTotal")
-      }}{{ formatBytes(statusBarInfo.netTotalDown) }}</span>
-    </div>
-    <div class="status-item">
-      <span class="status-label net-up">↑</span>
-      <span class="status-value net-up">{{ formatSpeed(statusBarInfo.netUp) }}</span>
-      <span class="status-total">{{
-        t("statusBar.sessionTotal")
-      }}{{ formatBytes(statusBarInfo.netTotalUp) }}</span>
-    </div>
+    <div class="status-spacer"></div>
+    <template v-if="showNetTraffic">
+      <div class="status-item">
+        <span class="status-label net-down">↓</span>
+        <span class="status-value net-down">{{
+          formatSpeed(statusBarInfo.netDown)
+        }}</span>
+        <span class="status-total">{{
+          t("statusBar.sessionTotal")
+        }}{{ formatBytes(statusBarInfo.netTotalDown) }}</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label net-up">↑</span>
+        <span class="status-value net-up">{{
+          formatSpeed(statusBarInfo.netUp)
+        }}</span>
+        <span class="status-total">{{
+          t("statusBar.sessionTotal")
+        }}{{ formatBytes(statusBarInfo.netTotalUp) }}</span>
+      </div>
+    </template>
     <div class="status-item">
       <span class="status-label">{{ t("statusBar.lastUpdate") }}</span>
       <span class="status-value">{{ statusBarInfo.lastUpdate }}</span>
@@ -106,9 +113,12 @@ interface StatusBarInfo {
 // 定义组件属性
 interface Props {
   statusBarInfo: StatusBarInfo;
+  showNetTraffic?: boolean; // 是否显示网络流量（托盘开关控制）
 }
 
-defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  showNetTraffic: true,
+});
 
 // 使用国际化
 const { t } = useI18n();
@@ -176,10 +186,9 @@ const formatBytes = (bytes: number): string => {
   padding-left: 12px;
 }
 
-/* 最后更新时间等推到右侧 */
-.status-item--push {
-  margin-left: auto !important;
-  padding-left: 16px !important;
+/* 右侧弹性占位：将网速与最后更新推到状态栏右侧 */
+.status-spacer {
+  flex: 1 1 12px;
 }
 
 .status-label {

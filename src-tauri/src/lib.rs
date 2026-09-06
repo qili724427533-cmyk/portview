@@ -3,7 +3,7 @@ use image;
 use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo, TcpState};
 use serde::{Deserialize, Serialize};
 use sysinfo::{Networks, Pid, ProcessRefreshKind, System, UpdateKind};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -84,10 +84,28 @@ lazy_static::lazy_static! {
 
 // 全局偏好：关闭窗口时是否直接退出（false = 隐藏到托盘常驻）
 static CLOSE_TO_QUIT: AtomicBool = AtomicBool::new(false);
+// 全局偏好：状态栏是否显示网络流量
+static SHOW_NET: AtomicBool = AtomicBool::new(true);
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct AppSettings {
+    #[serde(default)]
     close_to_quit: bool,
+    #[serde(default = "default_true")]
+    show_net: bool,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            close_to_quit: false,
+            show_net: true,
+        }
+    }
 }
 
 // 偏好设置持久化到缓存目录下的 settings.json
@@ -113,6 +131,18 @@ fn save_settings(settings: &AppSettings) {
             Err(e) => eprintln!("Failed to serialize settings: {}", e),
         }
     }
+}
+
+// 更新并持久化单项偏好
+fn update_setting(show_net: Option<bool>, close_to_quit: Option<bool>) {
+    let mut settings = load_settings();
+    if let Some(v) = show_net {
+        settings.show_net = v;
+    }
+    if let Some(v) = close_to_quit {
+        settings.close_to_quit = v;
+    }
+    save_settings(&settings);
 }
 
 // 全局复用的 System 实例：sysinfo 的 CPU 占用依赖同一实例两次刷新的差值，
@@ -1034,6 +1064,12 @@ async fn open_folder(path: String) -> Result<(), String> {
     Ok(())
 }
 
+// 前端启动时查询偏好设置（托盘可切换的开关项）
+#[tauri::command]
+async fn get_app_settings() -> Result<AppSettings, String> {
+    Ok(load_settings())
+}
+
 // 获取应用版本号
 #[tauri::command]
 async fn get_app_version() -> Result<String, String> {
@@ -1100,12 +1136,21 @@ pub fn run() {
 
             let handle = app.handle();
 
-            // 加载偏好设置（关闭行为等）
+            // 加载偏好设置（关闭行为、网络流量展示等）
             let settings = load_settings();
             CLOSE_TO_QUIT.store(settings.close_to_quit, Ordering::Relaxed);
+            SHOW_NET.store(settings.show_net, Ordering::Relaxed);
 
             let show_item =
                 MenuItem::with_id(handle, "show", "显示 PortView", true, None::<&str>)?;
+            let show_net_item = CheckMenuItem::with_id(
+                handle,
+                "show_net",
+                "显示网络流量",
+                true,
+                settings.show_net,
+                None::<&str>,
+            )?;
             let close_quit_item = CheckMenuItem::with_id(
                 handle,
                 "close_quit",
@@ -1132,6 +1177,7 @@ pub fn run() {
             let menu = MenuBuilder::new(handle)
                 .items(&[
                     &show_item,
+                    &show_net_item,
                     &close_quit_item,
                     &autostart_item,
                     &separator,
@@ -1150,13 +1196,18 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "show" => show_main_window(app),
+                    "show_net" => {
+                        // 勾选状态由菜单自动切换，这里同步偏好、持久化并通知前端
+                        let enabled = !SHOW_NET.load(Ordering::Relaxed);
+                        SHOW_NET.store(enabled, Ordering::Relaxed);
+                        update_setting(Some(enabled), None);
+                        let _ = app.emit("show-net-changed", enabled);
+                    }
                     "close_quit" => {
                         // 勾选状态由菜单自动切换，这里同步偏好并持久化
                         let enabled = !CLOSE_TO_QUIT.load(Ordering::Relaxed);
                         CLOSE_TO_QUIT.store(enabled, Ordering::Relaxed);
-                        save_settings(&AppSettings {
-                            close_to_quit: enabled,
-                        });
+                        update_setting(None, Some(enabled));
                     }
                     "autostart" => toggle_autostart(app),
                     "quit" => app.exit(0),
@@ -1184,6 +1235,7 @@ pub fn run() {
             get_connections,
             get_net_rate,
             get_process_details,
+            get_app_settings,
             kill_process,
             open_folder,
             get_app_version,

@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen } from "@tauri-apps/api/event";
 import { useI18n } from "vue-i18n";
 import ConnectionsTable from "./components/ConnectionsTable.vue";
 import MenuBar from "./components/MenuBar.vue";
@@ -10,7 +11,7 @@ import ContextMenu from "./components/ContextMenu.vue";
 import ProcessDetailsModal from "./components/ProcessDetailsModal.vue";
 import AboutDialog from "./components/AboutDialog.vue";
 import MessageBox from "./components/MessageBox.vue";
-import type { TcpConnection, ProcessDetails, SortColumn, SortDirection, ConnectionsSnapshot, NetRate } from "@/types/connection";
+import type { TcpConnection, ProcessDetails, SortColumn, SortDirection, ConnectionsSnapshot, NetRate, AppSettings } from "@/types/connection";
 
 // 初始化国际化
 const { t, locale } = useI18n();
@@ -199,6 +200,24 @@ async function refreshNetRate() {
     statusBarInfo.value.netTotalUp = rate.total_up;
   } catch {
     // 浏览器环境或后端不可用时静默忽略
+  }
+}
+
+// 状态栏网络流量展示开关（托盘"显示网络流量"控制）：
+// 关闭时同步停掉每秒的网速轮询，开启时立即恢复并拉取一次
+const showNetTraffic = ref(true);
+let settingsUnlisten: (() => void) | null = null;
+
+function setShowNetTraffic(enabled: boolean) {
+  showNetTraffic.value = enabled;
+  if (enabled) {
+    refreshNetRate();
+    if (netRateTimer === null) {
+      netRateTimer = window.setInterval(refreshNetRate, 1000);
+    }
+  } else if (netRateTimer !== null) {
+    window.clearInterval(netRateTimer);
+    netRateTimer = null;
   }
 }
 
@@ -692,9 +711,23 @@ onMounted(async () => {
 
   loadConnections();
 
-  // 启动系统网速实时刷新
-  refreshNetRate();
-  netRateTimer = window.setInterval(refreshNetRate, 1000);
+  // 系统网速实时刷新（受托盘"显示网络流量"开关控制）
+  setShowNetTraffic(true);
+
+  // 同步托盘偏好，并监听托盘开关变更
+  try {
+    const settings = await invoke<AppSettings>("get_app_settings");
+    setShowNetTraffic(settings.show_net);
+  } catch {
+    // 浏览器环境忽略
+  }
+  try {
+    settingsUnlisten = await listen<boolean>("show-net-changed", (event) => {
+      setShowNetTraffic(event.payload);
+    });
+  } catch {
+    // 浏览器环境忽略
+  }
 
   // 获取应用版本
   try {
@@ -736,6 +769,12 @@ onUnmounted(() => {
   // 清除网速刷新定时器
   if (netRateTimer !== null) {
     clearInterval(netRateTimer);
+  }
+
+  // 取消托盘偏好事件监听
+  if (settingsUnlisten !== null) {
+    settingsUnlisten();
+    settingsUnlisten = null;
   }
 
   // 停止进程详情刷新
@@ -871,7 +910,7 @@ function checkSystemThemePreference() {
     />
 
     <!-- 状态栏 -->
-    <StatusBar :statusBarInfo="statusBarInfo" />
+    <StatusBar :statusBarInfo="statusBarInfo" :showNetTraffic="showNetTraffic" />
 
     <!-- 进程详情弹窗 -->
     <ProcessDetailsModal
